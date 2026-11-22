@@ -66,21 +66,19 @@ Tested on Linux (Fedora, OrcaSlicer 2.5.1 Flatpak) against a real AD5X.
 
 The plugin speaks the printers' **local HTTP API** (port 8898) and the raw
 **TCP status protocol** (port 8899, `~M119` endstop/MachineStatus), both
-reverse-engineered and documented in [`docs/api-reference.md`](docs/api-reference.md)
-with hardware-verified request/response examples. All traffic is outbound
-from your machine to the printer; nothing leaves your LAN.
+reverse-engineered from the firmware with hardware-verified request/response
+examples. All traffic is outbound from your machine to the printer; nothing
+leaves your LAN.
 
 ## Repository layout
 
 ```
-docs/                Investigation notes (API reference, Bambu Studio dial
-                     design from its real source code, UX rules, field notes)
 plugin/orca_plugins/flashforge_monitor/   Plugin source (single .py)
 plugin/dist/         Package source used to build the wheel
 plugin/test_mock.py  Offline test suite (fake HTTP + TCP + UDP printers)
 plugin/smoke_test.py  Read-only smoke test against a real printer
 plugin/build_wheel.py / validate_wheel.py  Reproducible wheel build & checks
-plugin/release/      Release kit (wheel, changelog, hub listing texts, icon)
+plugin/release/      Release kit (wheel, changelog, hub listing, icon)
 ```
 
 ## Development

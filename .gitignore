@@ -1,3 +1,7 @@
+# Material de desarrollo interno (no se publica)
+docs/
+PLAN.md
+
 __pycache__/
 *.pyc
 .venv/
