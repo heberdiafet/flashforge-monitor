@@ -1,6 +1,11 @@
 # Material de desarrollo interno (no se publica)
 docs/
 PLAN.md
+plugin/release/pasos-publicacion.md
+
+# Binarios de build — solo se publica el wheel estable de release/
+*.whl
+!plugin/release/flashforge_monitor_any.whl
 
 __pycache__/
 *.pyc
