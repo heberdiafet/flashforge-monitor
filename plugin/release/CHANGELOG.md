@@ -1,6 +1,6 @@
 # Changelog — FlashForge Monitor
 
-Formato: una línea por hito relevante. Versión actual: **0.8.1**.
+Formato: una línea por hito relevante. Versión actual: **0.9.0**.
 
 - **0.1.0** — Base: cliente local HTTP 8898, dashboard demo y modelo de datos de la AD5X.
 - **0.2.0** — Control de trabajos y archivos: pausar/reanudar/detener, listado, miniaturas y subida.
@@ -18,3 +18,5 @@ Formato: una línea por hito relevante. Versión actual: **0.8.1**.
   (solo conexiones de salida) — elimina el aviso "Ejecuta un servidor" del
   escáner de seguridad de Orca. Verificado en hardware (respuesta de la
   AD5X sin bind, 320 B).
+
+- **0.9.0** — Tarjeta de finalización con **Confirme**/`stateCtrl_cmd` y **Volver a imprimir**; reimpresión tras `completed`/`cancel`; wheel estable `flashforge_monitor_any.whl` y rescate de config huérfana al arrancar.

@@ -6,7 +6,7 @@
 # name = "FlashForge Monitor"
 # description = "Dashboard para monitorear y controlar una FlashForge AD5X por red local"
 # author = "jfet"
-# version = "0.8.2"
+# version = "0.9.0"
 # ///
 
 """FlashForge Monitor — plugin de OrcaSlicer.
@@ -83,6 +83,7 @@ import http.client
 import json
 import math
 import os
+import pathlib
 import queue
 import re
 import socket
@@ -108,7 +109,7 @@ except ImportError:  # pragma: no cover
 # Constantes
 # ---------------------------------------------------------------------------
 
-PLUGIN_VERSION = "0.8.2"
+PLUGIN_VERSION = "0.9.0"
 
 #: Puerto de la API HTTP local (JSON). El 8899 es TCP crudo de texto (~M…): no
 #: se usa en este plugin. Ver docs/api-reference.md §1–2.
@@ -1579,6 +1580,16 @@ class FlashForgeClient:
         self._control("homingCtrl_cmd")
         return {"ok": True, "mock": False}
 
+    def clear_platform(self) -> dict[str, Any]:
+        """Cierra el diálogo de fin de impresión (``stateCtrl_cmd`` §6.7)."""
+        if self.mock:
+            self._mock_state = "ready"
+            self._mock_progress = 0.0
+            self._mock_job_name = "—"
+            return {"ok": True, "mock": True}
+        self._control("stateCtrl_cmd", {"action": "setClearPlatform"})
+        return {"ok": True, "mock": False}
+
     def move_axis(self, axis: str, delta: float) -> dict[str, Any]:
         """Mueve un eje ``x``/``y``/``z`` ``delta`` mm (``moveCtrl_cmd``)."""
         name = str(axis or "").strip().lower()
@@ -2066,6 +2077,30 @@ _DASHBOARD_HTML = r"""<!DOCTYPE html>
   @media (prefers-reduced-motion: reduce) {
     .hero.transient .transient-icon { animation: none; }
     .hero.transient .transient-meter i { animation: none; width: 64%; }
+  }
+  .hero.finished { grid-template-columns: 72px minmax(0, 1fr); gap: 16px; align-items: center; padding: 14px 16px; }
+  .hero.finished .hero-thumb,
+  .hero.finished .hero-body { display: none; }
+  .hero-finished { grid-column: 1 / -1; display: flex; align-items: center; gap: 16px; min-width: 0; }
+  .hero-finished[hidden] { display: none; }
+  .finished-check {
+    width: 58px; height: 58px; border-radius: 50%; flex: 0 0 auto;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--ok); background: color-mix(in srgb, var(--ok) 16%, var(--surface-2));
+    border: 1px solid color-mix(in srgb, var(--ok) 45%, transparent);
+  }
+  .finished-check .icon { width: 30px; height: 30px; }
+  .finished-body { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+  .finished-body h1 { font-size: 22px; line-height: 1.2; }
+  .finished-time { margin: 0; font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .finished-time[hidden] { display: none; }
+  .finished-text { margin: 0; font-size: 12.5px; color: var(--muted); }
+  .finished-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+  .finished-actions .btn { padding: 9px 16px; }
+  @media (max-width: 720px) {
+    .hero.finished { grid-template-columns: 48px minmax(0, 1fr); gap: 12px; }
+    .finished-check { width: 48px; height: 48px; }
+    .finished-check .icon { width: 25px; height: 25px; }
   }
   @media (max-width: 720px) {
     .hero { grid-template-columns: 104px minmax(0, 1fr); }
@@ -2627,6 +2662,22 @@ _DASHBOARD_HTML = r"""<!DOCTYPE html>
                 <div class="transient-meter" id="transient-meter"><i></i></div>
               </div>
             </div>
+            <div class="hero-finished" id="hero-finished" hidden>
+              <div class="finished-check">
+                <span class="icon" data-icon="check" aria-hidden="true"></span>
+              </div>
+              <div class="finished-body">
+                <h1 id="finished-title">Impresión completada.</h1>
+                <p class="finished-time" id="finished-time" hidden>Tiempo utilizado: —</p>
+                <p class="finished-text">Después de limpiar la cama, pulsa para desbloquear la impresora.</p>
+                <div class="finished-actions">
+                  <button class="btn primary" id="btn-confirm-platform" type="button"
+                          aria-label="Confirmar y desbloquear la impresora">Confirme</button>
+                  <button class="btn" id="btn-reprint" type="button"
+                          aria-label="Volver a imprimir el mismo archivo">Volver a imprimir</button>
+                </div>
+              </div>
+            </div>
           </section>
 
         <!-- Sensores -->
@@ -3029,6 +3080,8 @@ _DASHBOARD_HTML = r"""<!DOCTYPE html>
     homingNoticeSeen: false,
     homed: null,
     intent: null,
+    completedJob: "",
+    platformBusy: false,
     popAnchor: null,
     lastFocus: null,
     extraAction: null
@@ -3295,6 +3348,60 @@ _DASHBOARD_HTML = r"""<!DOCTYPE html>
     return isWorking(state) || isTransientState(state);
   }
 
+  function fmtDuration(seconds) {
+    var total = Math.max(0, Math.round(Number(seconds) || 0));
+    var hours = Math.floor(total / 3600);
+    var minutes = Math.floor((total % 3600) / 60);
+    if (hours > 0) { return hours + "h " + minutes + "min"; }
+    if (minutes > 0) { return minutes + " min"; }
+    return total + " s";
+  }
+
+  function setPlatformBusy(busy) {
+    ui.platformBusy = Boolean(busy);
+    var confirm = $("btn-confirm-platform");
+    var reprint = $("btn-reprint");
+    if (confirm) {
+      confirm.disabled = ui.platformBusy;
+      confirm.textContent = ui.platformBusy ? "Confirmando…" : "Confirme";
+      confirm.setAttribute("aria-busy", ui.platformBusy ? "true" : "false");
+    }
+    if (reprint) { reprint.disabled = ui.platformBusy; }
+  }
+
+  function renderFinished(state, msg, job) {
+    var wrap = $("hero-finished");
+    if (!wrap) { return; }
+    wrap.hidden = false;
+    var cancelled = state === "cancel" || state === "cancelled";
+    setText("finished-title", cancelled ? "Impresión cancelada." : "Impresión completada.");
+    var elapsed = Number(msg.completed_elapsed_s) || Number(job.elapsed_s) || 0;
+    var time = $("finished-time");
+    if (elapsed > 0) {
+      time.hidden = false;
+      setText("finished-time", "Tiempo utilizado: " + fmtDuration(elapsed));
+    } else {
+      time.hidden = true;
+    }
+    var file = String(msg.completed_job || job.name || "").trim();
+    ui.completedJob = (file && file !== "—") ? file : "";
+    var reprint = $("btn-reprint");
+    if (reprint) { reprint.hidden = !ui.completedJob; }
+    if (!ui.platformBusy) { setPlatformBusy(false); }
+  }
+
+  function confirmPlatform() {
+    if (ui.platformBusy) { return; }
+    setPlatformBusy(true);
+    send({ type: "clear-platform" });
+  }
+
+  function reprintCompleted() {
+    if (ui.platformBusy || !ui.completedJob) { return; }
+    setPlatformBusy(true);
+    send({ type: "start-file", file: ui.completedJob, leveling: true, clear_first: true });
+  }
+
   function renderTransient(state, msg, nozzle, bed, intent) {
     var wrap = $("hero-transient");
     if (!wrap) { return; }
@@ -3414,6 +3521,8 @@ _DASHBOARD_HTML = r"""<!DOCTYPE html>
     var state = KNOWN_STATES[rawState] ? rawState : "busy";
     var intentActive = Boolean(ui.intent && ui.intent.kind);
     var transient = isTransientState(state) || intentActive;
+    var finished = !transient && (state === "completed" || state === "cancel"
+      || state === "cancelled");
     var errorCode = String(msg.error_code || "").trim();
 
     // Hero
@@ -3443,12 +3552,19 @@ _DASHBOARD_HTML = r"""<!DOCTYPE html>
       || Number(job.progress) > 0 || active;
     var heroEl = document.querySelector(".hero");
     heroEl.classList.toggle("has-job", hasJob);
-    heroEl.classList.toggle("idle", !hasJob && !transient);
+    heroEl.classList.toggle("idle", !hasJob && !transient && !finished);
     heroEl.classList.toggle("transient", transient);
+    heroEl.classList.toggle("finished", finished);
     if (transient) {
+      $("hero-finished").hidden = true;
       renderTransient(state, msg, nozzle, bed, ui.intent);
+    } else if (finished) {
+      $("hero-transient").hidden = true;
+      renderFinished(state, msg, job);
     } else {
       $("hero-transient").hidden = true;
+      $("hero-finished").hidden = true;
+      setPlatformBusy(false);
     }
 
     var wasConnected = ui.connected;
@@ -4056,6 +4172,19 @@ _DASHBOARD_HTML = r"""<!DOCTYPE html>
   }
 
   function confirmStartFile(entry) {
+    var state = String((ui.status && ui.status.state) || "");
+    if (state === "completed" || state === "cancel" || state === "cancelled") {
+      openModal({
+        title: "La impresora espera confirmación",
+        text: "La impresora terminó un trabajo y espera confirmación — ¿limpiar la plataforma e imprimir «"
+          + entry.name + "»?",
+        confirmLabel: "Limpiar e imprimir",
+        onConfirm: function () {
+          send({ type: "start-file", file: entry.name, leveling: true, clear_first: true });
+        }
+      });
+      return;
+    }
     var extra = entry.use_station ? " Se usarán los colores de la estación IFS." : "";
     openModal({
       title: "Imprimir «" + entry.name + "»",
@@ -4820,6 +4949,12 @@ _DASHBOARD_HTML = r"""<!DOCTYPE html>
         else { showBanner("error", msg.message || "No se pudo actualizar el slot.", null, null, false); }
         break;
       case "command-ack":
+        if (msg.command === "clear-platform" || msg.command === "start-file") {
+          setPlatformBusy(false);
+        }
+        if (msg.command === "clear-platform" && !msg.ok) {
+          toast(msg.message || "No se pudo limpiar la plataforma.", "warn");
+        }
         if (msg.ok) { toast(msg.message || "Orden enviada"); }
         else { showBanner("error", msg.message || "La impresora rechazó la orden.", null, null, false); }
         break;
@@ -4921,6 +5056,8 @@ _DASHBOARD_HTML = r"""<!DOCTYPE html>
       send({ type: "control", action: paused ? "resume" : "pause" });
     });
     $("btn-cancel").addEventListener("click", stopJob);
+    $("btn-confirm-platform").addEventListener("click", confirmPlatform);
+    $("btn-reprint").addEventListener("click", reprintCompleted);
     $("btn-clear-error").addEventListener("click", clearError);
 
     // Sensores → popovers
@@ -5492,6 +5629,7 @@ ACTION_KINDS: frozenset[str] = frozenset({
     "extrude",
     "calibrate",
     "clear-errors",
+    "clear-platform",
     "set-shutdown",
     "ms-load",
     "ms-unload",
@@ -5511,6 +5649,7 @@ _ACK_TEXT: dict[str, str] = {
     "extrude": "Extrusión enviada.",
     "calibrate": "Calibración iniciada (la impresora se moverá sola).",
     "clear-errors": "Error limpiado.",
+    "clear-platform": "Plataforma liberada. La impresora vuelve a ready.",
     "set-shutdown": "Auto-apagado actualizado.",
     "ms-load": "Cargando filamento (la impresora se moverá).",
     "ms-unload": "Descargando filamento (la impresora se moverá).",
@@ -5565,9 +5704,12 @@ class _FlashForgePageLogic:
         self._current_state = ""
         self._last_calibration = ""      # "level" | "vibr" | "" (disparo local)
         self._last_filament_action = ""  # "load" | "unload" | ""
+        self._last_completed_job = ""
+        self._last_completed_elapsed = 0
         self._consecutive_failures = 0   # backoff de red
         self._local_intent: dict[str, Any] | None = None
         self._intent_suppress_until = 0.0
+        self._rescue_attempted = False
 
     # -- contrato de la capability -----------------------------------------
 
@@ -5586,6 +5728,84 @@ class _FlashForgePageLogic:
 
     def get_config_version(self) -> str:
         return CONFIG_VERSION
+
+    def _data_dir_candidates(self) -> list[pathlib.Path]:
+        """data_dir() por accessor documentado o, si no existe, por rutas conocidas."""
+        found: list[pathlib.Path] = []
+        # Accesor documentado: orca.host.plugin.storage() devuelve
+        # data_dir()/orca_plugins/plugin_data/<plugin_key>.
+        try:
+            host = getattr(orca, "host", None)
+            plugin = getattr(host, "plugin", None)
+            storage = getattr(plugin, "storage", None)
+            if callable(storage):
+                path = pathlib.Path(str(storage())).expanduser()
+                if path.parent.name == "plugin_data" and path.parent.parent.name == "orca_plugins":
+                    found.append(path.parent.parent.parent)
+        except Exception as exc:
+            _log(f"rescate: plugin.storage() no disponible ({exc!r})")
+        # Posibles accessors futuros/alternativos.
+        for owner, attr in ((orca, "data_dir"),
+                            (getattr(orca, "host", None), "data_dir"),
+                            (getattr(orca, "paths", None), "data_dir")):
+            try:
+                getter = getattr(owner, attr, None)
+                if callable(getter):
+                    found.append(pathlib.Path(str(getter())).expanduser())
+            except Exception:
+                pass
+        if not found:
+            found.extend(_fallback_data_dirs())
+        unique: list[pathlib.Path] = []
+        for item in found:
+            try:
+                resolved = item.resolve()
+            except OSError:
+                resolved = item
+            if resolved not in unique:
+                unique.append(resolved)
+        return unique
+
+    def _rescue_orphan_config(self) -> dict[str, Any] | None:
+        """Adopta la entrada 'FlashForge/pages' más completa de config.json."""
+        best: tuple[tuple[Any, ...], dict[str, Any], str, str] | None = None
+        for data_dir in self._data_dir_candidates():
+            config_path = data_dir / "orca_plugins" / "config.json"
+            try:
+                raw = config_path.read_text(encoding="utf-8")
+                data = json.loads(raw)
+            except (OSError, ValueError, UnicodeError):
+                continue
+            entries = data.get("config") if isinstance(data, dict) else data
+            if isinstance(entries, dict):
+                entries = list(entries.values())
+            if not isinstance(entries, list):
+                continue
+            for entry in entries:
+                if not isinstance(entry, dict):
+                    continue
+                if str(entry.get("capability_type") or "") != "pages":
+                    continue
+                if str(entry.get("capability") or "") != "FlashForge":
+                    continue
+                cap = entry.get("cap_config")
+                if not isinstance(cap, dict):
+                    continue
+                printers = cap.get("printers")
+                if not isinstance(printers, list) or not printers:
+                    continue
+                version = entry.get("plugin_version") or entry.get("version") or ""
+                score = (_version_key(version), len(printers), bool(cap.get("active_printer")))
+                if best is None or score > best[0]:
+                    best = (score, cap, str(config_path), str(entry.get("plugin_key") or ""))
+        if best is None:
+            return None
+        _score, cap, source, key = best
+        migrated, _changed = _migrate_config(dict(cap))
+        cleaned = _sanitize_config(migrated)
+        _log(f"rescate de config: adoptada {key!r} desde {source} "
+             f"({len(cleaned.get('printers') or [])} impresora(s))")
+        return cleaned
 
     def get_config(self) -> str:
         """Config v2 (defaults + guardada), siempre como JSON string.
@@ -5616,6 +5836,21 @@ class _FlashForgePageLogic:
                 super().save_config(json.dumps(migrated))  # type: ignore[misc]
             except Exception as exc:
                 _log(f"no se pudo persistir la migración: {exc!r}")
+
+        # Una sola vez por carga: rescata configs huérfanas del hub (Bug 2).
+        if not getattr(self, "_rescue_attempted", False):
+            self._rescue_attempted = True
+            if not migrated.get("printers"):
+                rescued = self._rescue_orphan_config()
+                if rescued and rescued.get("printers"):
+                    migrated = rescued
+                    try:
+                        super().save_config(json.dumps(migrated))  # type: ignore[misc]
+                        _log("rescate de config: guardada en la capability actual")
+                    except Exception as exc:
+                        _log(f"rescate de config: no se pudo guardar ({exc!r})")
+                elif rescued is None:
+                    _log("rescate de config: no hay config huérfana de FlashForge")
         return json.dumps(migrated)
 
     def save_config(self, config: str) -> bool:
@@ -5848,7 +6083,8 @@ class _FlashForgePageLogic:
                 if not name:
                     raise ValueError("falta el nombre del archivo")
                 payload = {"file": name[:255],
-                           "leveling": bool(data.get("leveling", True))}
+                           "leveling": bool(data.get("leveling", True)),
+                           "clear_first": bool(data.get("clear_first", False))}
             elif msg_type == "upload":
                 path = str(data.get("path") or "").strip()
                 if not path:
@@ -5870,6 +6106,8 @@ class _FlashForgePageLogic:
                            "vibration": bool(data.get("vibration", False))}
             elif msg_type == "clear-errors":
                 payload = {"code": str(data.get("code") or "").strip()[:32]}
+            elif msg_type == "clear-platform":
+                payload = {}
             elif msg_type == "set-shutdown":
                 payload = {"minutes": float(data.get("minutes") or 0)}
             elif msg_type in ("ms-load", "ms-unload"):
@@ -6015,6 +6253,8 @@ class _FlashForgePageLogic:
         self._current_state = ""
         self._last_calibration = ""
         self._last_filament_action = ""
+        self._last_completed_job = ""
+        self._last_completed_elapsed = 0
         self._consecutive_failures = 0
         self._intent_suppress_until = 0.0
         if self._local_intent is not None:
@@ -6172,6 +6412,13 @@ class _FlashForgePageLogic:
         job_name = str((status.get("job") or {}).get("name") or "")
         if job_name and job_name != "—":
             self._last_job_name = job_name
+        if state in ("completed", "cancel", "cancelled"):
+            completed_name = job_name if job_name and job_name != "—" else self._last_job_name
+            if completed_name:
+                self._last_completed_job = completed_name
+            elapsed = _to_int((status.get("job") or {}).get("elapsed_s"))
+            if elapsed > 0:
+                self._last_completed_elapsed = elapsed
         self._last_job_active = str(status.get("state") or "") in (
             "printing", "pausing", "pause", "paused", "resuming", "heating",
         )
@@ -6191,6 +6438,8 @@ class _FlashForgePageLogic:
             "last_calibration": self._last_calibration,
             "last_filament_action": self._last_filament_action,
             "intent": self._intent_public(),
+            "completed_job": self._last_completed_job,
+            "completed_elapsed_s": self._last_completed_elapsed,
             "ts": time.time(),
             "latency_ms": int((time.monotonic() - started) * 1000),
         })
@@ -6428,6 +6677,22 @@ class _FlashForgePageLogic:
 
     # -- acciones de los módulos 1–3 (se ejecutan en el worker) -------------
 
+    @staticmethod
+    def _wait_until_ready(client: FlashForgeClient, timeout: float) -> bool:
+        """Espera a que /detail vuelva a ``ready`` (sondeo cada 2 s, tope dado)."""
+        deadline = time.monotonic() + max(0.0, timeout)
+        while True:
+            try:
+                status = client.get_status()
+            except FlashForgeError:
+                pass
+            else:
+                if normalize_state(status.get("state")) == "ready":
+                    return True
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(min(2.0, max(0.0, deadline - time.monotonic())))
+
     def _run_action(self, kind: str, payload: dict[str, Any]) -> bool:
         """Ejecuta una acción de la página. Devuelve True si conviene re-sondear."""
         if kind == "discover":
@@ -6460,9 +6725,19 @@ class _FlashForgePageLogic:
             elif kind == "set-led":
                 result = client.set_led(payload["on"])
             elif kind == "start-file":
+                if payload.get("clear_first"):
+                    client.clear_platform()
+                    if not self._wait_until_ready(client, 10.0):
+                        raise FlashForgeError(
+                            "busy",
+                            "La impresora no volvió a ready tras limpiar la plataforma "
+                            "(10 s). Confirma en la pantalla de la impresora e inténtalo de nuevo.",
+                        )
                 result = client.start_file(payload["file"], leveling=payload["leveling"])
             elif kind == "home":
                 result = client.home_axes()
+            elif kind == "clear-platform":
+                result = client.clear_platform()
             elif kind == "move":
                 result = client.move_axis(payload["axis"], payload["delta"])
             elif kind == "extrude":
@@ -6771,6 +7046,28 @@ def _active_printer(cfg: dict[str, Any]) -> dict[str, Any]:
     if 0 <= index < len(printers):
         return printers[index]
     return printers[0] if printers else {}
+
+
+def _fallback_data_dirs() -> list[pathlib.Path]:
+    """Rutas habituales de data_dir() cuando el host no expone un accessor."""
+    home = pathlib.Path.home()
+    candidates: list[pathlib.Path] = []
+    xdg = os.environ.get("XDG_CONFIG_HOME")
+    if xdg:
+        candidates.append(pathlib.Path(xdg) / "OrcaSlicer")
+    candidates.append(home / ".config" / "OrcaSlicer")
+    candidates.append(home / ".var" / "app" / "com.orcaslicer.OrcaSlicer"
+                      / "config" / "OrcaSlicer")
+    appdata = os.environ.get("APPDATA")
+    if appdata:
+        candidates.append(pathlib.Path(appdata) / "OrcaSlicer")
+    candidates.append(home / "Library" / "Application Support" / "OrcaSlicer")
+    return candidates
+
+
+def _version_key(value: Any) -> tuple[int, ...]:
+    parts = [int(part) for part in re.findall(r"\d+", str(value or ""))[:4]]
+    return tuple(parts) if parts else (0,)
 
 
 def _load_config_json(raw: str) -> dict[str, Any]:

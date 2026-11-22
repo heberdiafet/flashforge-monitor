@@ -68,7 +68,7 @@ Everything is local: the plugin connects directly to the printer over your LAN. 
 
 1. Open OrcaSlicer.
 2. **File → Plugins → Install local plugin**.
-3. Select `flashforgemonitor-0.8.1-py3-none-any.whl`.
+3. Select `flashforge_monitor_any.whl` (the stable, versionless wheel name used by the hub).
 4. Activate **FlashForge Monitor** and open the new **FlashForge** tab.
 
 ### Configuration
@@ -85,5 +85,6 @@ Everything is local: the plugin connects directly to the printer over your LAN. 
 ### Notes
 
 - The wheel is pure Python (`py3-none-any`) and has no third-party dependencies.
+- Version **0.9.0**. The published file keeps the stable name `flashforge_monitor_any.whl`, so OrcaSlicer keeps the same plugin key across updates and does not lose the saved printer configuration.
 - Camera support depends on the printer model/firmware and whether port 8080 is reachable.
 - The interface follows OrcaSlicer’s light/dark theme and prefers-reduced-motion settings.

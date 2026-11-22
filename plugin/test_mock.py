@@ -486,6 +486,7 @@ class FakePrinterHandler(BaseHTTPRequestHandler):
     state_sequence: list = []
     sequence_started = 0.0
     sequence_error = ""
+    forced_state: str | None = None
 
     @classmethod
     def set_state_sequence(cls, entries: list, error: str = "") -> None:
@@ -574,6 +575,8 @@ class FakePrinterHandler(BaseHTTPRequestHandler):
                 detail["status"] = sequence_state
                 detail["errorCode"] = (type(self).sequence_error
                                        if sequence_state == "error" else "")
+            elif type(self).forced_state:
+                detail["status"] = type(self).forced_state
             detail["matlStationInfo"] = dict(_FAKE_DETAIL["matlStationInfo"])
             detail["rightTargetTemp"] = type(self).targets["nozzle"]
             detail["platTargetTemp"] = type(self).targets["bed"]
@@ -599,6 +602,8 @@ class FakePrinterHandler(BaseHTTPRequestHandler):
 
         payload = body.get("payload") or {}
         type(self).control_calls.append(payload)
+        if payload.get("cmd") == "stateCtrl_cmd":
+            type(self).forced_state = "ready"
         if payload.get("cmd") == "temperatureCtl_cmd" and not type(self).no_temp_effect:
             args = payload.get("args") or {}
             if "rightNozzle" in args:
@@ -668,6 +673,7 @@ def _reset_fake_printer() -> None:
     FakePrinterHandler.bmp_thumb = b""
     FakePrinterHandler.targets = {"nozzle": 220.0, "bed": 60.0}
     FakePrinterHandler.set_state_sequence([], "")
+    FakePrinterHandler.forced_state = None
     FakeTcpHandler.m119_line = "Endstop: X-max: 110 Y-max: 110 Z-min: 0"
 
 
@@ -901,6 +907,18 @@ def test_client_real_api() -> None:
             expect(snap["status"]["state"] == "ready",
                    f"secuencia: {transient} → ready")
         FakePrinterHandler.set_state_sequence([], "")
+
+        # --- stateCtrl_cmd: payload exacto de fin de impresión ---
+        FakePrinterHandler.control_calls = []
+        client.clear_platform()
+        expect(FakePrinterHandler.control_calls[-1] ==
+               {"cmd": "stateCtrl_cmd", "args": {"action": "setClearPlatform"}},
+               f"clear_platform: {FakePrinterHandler.control_calls[-1]}")
+        FakePrinterHandler.forced_state = "completed"
+        expect(client.get_status()["state"] == "completed", "estado completed forzado")
+        client.clear_platform()
+        expect(client.get_status()["state"] == "ready", "clear_platform deja ready")
+        FakePrinterHandler.forced_state = None
 
         demo = module.FlashForgeClient(host="", mock=True)
         demo.unload_filament(0)
@@ -1210,6 +1228,10 @@ def test_page_with_fake_orca() -> None:
     section("Capability FlashForgePage (host simulado)")
 
     fake_orca, registered = build_fake_orca()
+    # Evita que el rescate lea el data_dir real durante los tests.
+    safe_root = pathlib.Path(tempfile.mkdtemp(prefix="ffm-safe-data-"))
+    fake_orca.host.plugin = types.SimpleNamespace(
+        storage=lambda: str(safe_root / "orca_plugins" / "plugin_data" / "flashforge_monitor"))
     sys.modules["orca"] = fake_orca
     try:
         module = load_plugin("flashforge_monitor_with_orca")
@@ -1621,6 +1643,76 @@ def test_page_with_fake_orca() -> None:
            and len(intent_page.messages("notification")) == before,
            "desconexión limpia la intención sin aviso")
 
+    # --- rescate de config huérfana (Bug 2) ---
+    orphan_root = pathlib.Path(tempfile.mkdtemp(prefix="ffm-orphan-"))
+    orphan_dir = orphan_root / "orca_plugins"
+    orphan_dir.mkdir(parents=True)
+    orphan_entries = {
+        "config": [
+            {"plugin_key": "flashforge_monitor", "plugin_version": "0.3.0",
+             "capability_type": "pages", "capability": "FlashForge",
+             "cap_config": {"active_printer": 0, "mock": False,
+                            "printers": [{"name": "Vieja", "ip": "10.0.0.1",
+                                          "serial": "S1", "check_code": "c1"}]}},
+            {"plugin_key": "flashforgemonitor-0.8.1-py3-none-any",
+             "plugin_version": "0.8.1", "capability_type": "pages",
+             "capability": "FlashForge",
+             "cap_config": {"active_printer": 0, "mock": False,
+                            "printers": [{"name": "AD5X 0.8.1", "ip": "10.0.0.2",
+                                          "serial": "S2", "check_code": "c2"}]}},
+            {"plugin_key": "flashforgemonitor-0.8.2-py3-none-any",
+             "plugin_version": "0.8.2", "capability_type": "pages",
+             "capability": "FlashForge",
+             "cap_config": {"active_printer": 0, "mock": False, "poll_interval": 5,
+                            "printers": [{"name": "AD5X final", "ip": "192.168.1.50",
+                                          "serial": "SNAD5X000001",
+                                          "check_code": "a1b2c3d4"}]}},
+        ]
+    }
+    (orphan_dir / "config.json").write_text(json.dumps(orphan_entries), encoding="utf-8")
+    fake_orca.host.plugin = types.SimpleNamespace(
+        storage=lambda: str(orphan_root / "orca_plugins" / "plugin_data" / "flashforgemonitor-0.8.2"))
+    page._stored_config = "{}"
+    page._rescue_attempted = False
+    rescued = json.loads(page.get_config())
+    expect(rescued["printers"] and rescued["printers"][0]["name"] == "AD5X final",
+           f"rescate adopta la 0.8.2 más completa: {rescued.get('printers')}")
+    expect(rescued["printers"][0]["check_code"] == "a1b2c3d4",
+           "el rescate conserva el check code")
+    persisted = json.loads(page._stored_config)
+    expect(persisted["printers"][0]["name"] == "AD5X final",
+           "el rescate se persiste en la capability actual")
+
+    empty_root = pathlib.Path(tempfile.mkdtemp(prefix="ffm-empty-"))
+    fake_orca.host.plugin = types.SimpleNamespace(
+        storage=lambda: str(empty_root / "orca_plugins" / "plugin_data" / "key"))
+    page._stored_config = "{}"
+    page._rescue_attempted = False
+    empty = json.loads(page.get_config())
+    expect(empty.get("printers") == [], "sin config.json no rescata y no falla")
+
+    page._stored_config = json.dumps({"printers": [{"name": "Actual", "ip": "10.0.0.9"}]})
+    page._rescue_attempted = False
+    fake_orca.host.plugin = types.SimpleNamespace(
+        storage=lambda: str(orphan_root / "orca_plugins" / "plugin_data" / "x"))
+    current = json.loads(page.get_config())
+    expect(current["printers"][0]["name"] == "Actual",
+           "si ya hay impresoras no adopta la huérfana")
+
+    original_fallback = module._fallback_data_dirs
+    module._fallback_data_dirs = lambda: [orphan_root]
+    try:
+        fake_orca.host.plugin = None
+        page._stored_config = "{}"
+        page._rescue_attempted = False
+        fallback = json.loads(page.get_config())
+        expect(fallback["printers"][0]["name"] == "AD5X final",
+               "fallback de data_dir también rescata")
+    finally:
+        module._fallback_data_dirs = original_fallback
+        fake_orca.host.plugin = types.SimpleNamespace(
+            storage=lambda: str(safe_root / "orca_plugins" / "plugin_data" / "flashforge_monitor"))
+
     # --- descubrimiento vía handler del worker (función UDP sustituida) ---
     original_discover = module.discover_printers
     module.discover_printers = lambda timeout=0.0, targets=None: [
@@ -1712,6 +1804,41 @@ def test_page_with_fake_orca() -> None:
                and "Calibración terminó con error" in note["message"]
                and "E0100" in note["message"],
                f"error de intención sin duplicar: {note}")
+
+        # --- completed → clear-platform → ready ---
+        FakePrinterHandler.set_state_sequence([], "")
+        FakePrinterHandler.forced_state = "completed"
+        expect(wait_for(lambda: any(m.get("state") == "completed"
+                                    for m in intent_live.messages("status")), 6.0),
+               "el worker ve completed")
+        completed_status = [m for m in intent_live.messages("status")
+                            if m.get("state") == "completed"][-1]
+        expect(completed_status.get("completed_job") == "AD5X_benchy_0.20mm_PLA_1h02m.gx",
+               f"completed_job guardado: {completed_status.get('completed_job')}")
+        FakePrinterHandler.control_calls = []
+        before_acks = len(intent_live.messages("command-ack"))
+        intent_live.on_message({"type": "clear-platform"})
+        ack = wait_new_message(intent_live, "command-ack", before_acks, timeout=6.0)
+        expect(ack is not None and ack.get("ok") is True, "clear-platform acusado")
+        expect(any(c.get("cmd") == "stateCtrl_cmd"
+                   and c.get("args") == {"action": "setClearPlatform"}
+                   for c in FakePrinterHandler.control_calls),
+               f"payload clear-platform: {FakePrinterHandler.control_calls}")
+
+        # --- completed → start-file clear_first → reprint mismo archivo ---
+        FakePrinterHandler.forced_state = "completed"
+        FakePrinterHandler.print_calls = []
+        FakePrinterHandler.control_calls = []
+        before_acks = len(intent_live.messages("command-ack"))
+        intent_live.on_message({"type": "start-file", "file": "Benchy_0.20mm_PLA.gx",
+                                "leveling": True, "clear_first": True})
+        ack = wait_new_message(intent_live, "command-ack", before_acks, timeout=12.0)
+        expect(ack is not None and ack.get("ok") is True, "start-file clear_first acusado")
+        expect(any(c.get("cmd") == "stateCtrl_cmd" for c in FakePrinterHandler.control_calls),
+               "start-file limpia la plataforma antes de imprimir")
+        expect(FakePrinterHandler.print_calls
+               and FakePrinterHandler.print_calls[-1].get("fileName") == "Benchy_0.20mm_PLA.gx",
+               f"reprint mismo archivo: {FakePrinterHandler.print_calls}")
     finally:
         intent_live.on_unload()
         FakePrinterHandler.set_state_sequence([], "")

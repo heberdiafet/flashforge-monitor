@@ -23,11 +23,12 @@ Sin dependencias externas: solo stdlib de Python (`urllib.request`, `http.client
 `socket`, `json`, `threading`, `queue`, `time`). Toda la UI es HTML/JS plano
 servido por el puente de plugins de OrcaSlicer (nada de PyQt/wx/tkinter).
 
-> **Estado: v0.8.1 — intención local.** API real autenticada contra la AD5X
+> **Estado: v0.9.0 — fin de impresión y config estable.** API real autenticada contra la AD5X
 > (`192.168.1.50`, fw `3.1.8-1.1.1`), multi-impresora, UDP discovery,
 > notificaciones, gráficas y dashboard con sensores integrados bajo el hero,
 > control más ancho (70/30) con dial ampliado, IFS a ancho completo, homing real
-> por ~M119 y carga/descarga de filamento por slot.
+> por ~M119, carga/descarga de filamento, tarjeta de fin con **Confirme** y
+> reimpresión, y config que sobrevive a los cambios de wheel.
 
 ---
 
@@ -360,6 +361,25 @@ El hero tiene vistas propias para los estados transitorios del firmware:
   impresora no responde (contador de fallos, reset al primer éxito). El banner
   muestra «reintentando… (Xs)» sin repetir toasts. Un `refresh` manual
   interrumpe el backoff.
+
+## Fin de impresión y config estable (v0.9.0)
+
+- Tras `completed`/`cancel`, el hero muestra una tarjeta con tilde verde,
+  «Tiempo utilizado: Xh Ymin» (si `/detail` lo trae), el texto «Después de
+  limpiar la cama, pulsa para desbloquear la impresora» y dos botones:
+  **Confirme** (envía `stateCtrl_cmd` → `setClearPlatform`) y **Volver a
+  imprimir** (limpia, espera `ready` hasta 10 s y reenvía `printGcode` del mismo
+  archivo). Pausar/Detener se ocultan.
+- Si se lanza un archivo desde **Archivos** con la impresora en `completed`/`cancel`,
+  se intercepta con un modal que ofrece limpiar la plataforma e imprimir.
+- **Nombre estable del wheel**: el hub recibe siempre
+  `flashforge_monitor_any.whl`; así el `plugin_key` de OrcaSlicer no cambia entre
+  versiones. El build también genera el nombre canónico con versión.
+- **Rescate de config**: si `get_config()` arranca sin `printers`, el plugin lee
+  `data_dir()/orca_plugins/config.json` (vía `orca.host.plugin.storage()`, con
+  fallback a las rutas típicas de Linux/Flatpak/Windows/macOS) y adopta la
+  entrada `pages`/`FlashForge` más completa y de versión más alta. Se ejecuta una
+  vez por carga y se guarda en la capability actual.
 
 ## Homing real por TCP 8899 (v0.7.0)
 

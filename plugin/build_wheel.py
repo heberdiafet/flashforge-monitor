@@ -20,16 +20,19 @@ import sys
 import zipfile
 
 NAME = "FlashForgeMonitor"
-VERSION = "0.8.2"
+VERSION = "0.9.0"
 NORMALIZED = "flashforgemonitor"
 DIST_INFO = f"flashforge_monitor-{VERSION}.dist-info"
 WHEEL_NAME = f"{NORMALIZED}-{VERSION}-py3-none-any.whl"
+STABLE_NAME = "flashforge_monitor_any.whl"
 
 ROOT = pathlib.Path(__file__).resolve().parent
 DIST = ROOT / "dist"
 PACKAGE = DIST / "flashforge_monitor" / "__init__.py"
 OUTPUT = DIST / WHEEL_NAME
+STABLE = DIST / STABLE_NAME
 RELEASE = ROOT / "release" / WHEEL_NAME
+RELEASE_STABLE = ROOT / "release" / STABLE_NAME
 
 SUMMARY = (
     "Monitor y control local para impresoras FlashForge (AD5X / Adventurer 5M / "
@@ -99,8 +102,10 @@ def build() -> pathlib.Path:
             wheel.writestr(info, files[path], compress_type=zipfile.ZIP_DEFLATED,
                            compresslevel=9)
 
+    shutil.copy2(OUTPUT, STABLE)
     digest = hashlib.sha256(OUTPUT.read_bytes()).hexdigest()
     print(f"Wheel: {OUTPUT}")
+    print(f"Wheel estable: {STABLE}")
     print(f"SHA-256: {digest}")
     print(f"Tamaño: {OUTPUT.stat().st_size} bytes")
     return OUTPUT
@@ -123,7 +128,9 @@ def main() -> int:
     if args.release:
         RELEASE.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(wheel, RELEASE)
+        shutil.copy2(wheel, RELEASE_STABLE)
         print(f"Release: {RELEASE}")
+        print(f"Release estable: {RELEASE_STABLE}")
     return 0
 
 
