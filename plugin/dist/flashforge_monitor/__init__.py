@@ -6,7 +6,7 @@
 # name = "FlashForge Monitor"
 # description = "Dashboard para monitorear y controlar una FlashForge AD5X por red local"
 # author = "jfet"
-# version = "0.9.0"
+# version = "0.10.0"
 # ///
 
 """FlashForge Monitor — plugin de OrcaSlicer.
@@ -109,7 +109,7 @@ except ImportError:  # pragma: no cover
 # Constantes
 # ---------------------------------------------------------------------------
 
-PLUGIN_VERSION = "0.9.0"
+PLUGIN_VERSION = "0.10.0"
 
 #: Puerto de la API HTTP local (JSON). El 8899 es TCP crudo de texto (~M…): no
 #: se usa en este plugin. Ver docs/api-reference.md §1–2.
@@ -247,7 +247,7 @@ MATERIALS: tuple[str, ...] = (
 
 #: Versión del esquema de config (v1: ip/serial/check_code en la raíz;
 #: v2: lista de impresoras + ajustes globales). Ver ``get_config_version``.
-CONFIG_VERSION = "2"
+CONFIG_VERSION = "3"
 
 #: Máximo de impresoras que se guardan (la UI no sondea las inactivas).
 MAX_PRINTERS = 8
@@ -281,8 +281,590 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "poll_interval": DEFAULT_INTERVAL,
     "notify_on_finish": True,
     "notify_on_error": True,
+    "language": "auto",        # auto | es | en
     "mock": True,              # datos simulados si no hay impresora configurada
 }
+
+
+_I18N_PAIRS: list[tuple[str, str]] = [('Sin vista previa', 'No preview'),
+ ('Sin trabajo', 'No job'),
+ ('Impresora en reposo', 'Printer idle'),
+ ('Pausar', 'Pause'),
+ ('Reanudar', 'Resume'),
+ ('Detener', 'Stop'),
+ ('Lista', 'Ready'),
+ ('Ocupada', 'Busy'),
+ ('Calibrando', 'Calibrating'),
+ ('Calentando', 'Heating'),
+ ('Imprimiendo', 'Printing'),
+ ('En pausa', 'Paused'),
+ ('Terminada', 'Completed'),
+ ('Error', 'Error'),
+ ('Recibiendo', 'Receiving'),
+ ('Cargando', 'Loading'),
+ ('Enviando', 'Sending'),
+ ('Descomprimiendo', 'Unzipping'),
+ ('En reposo', 'Idle'),
+ ('Cancelada', 'Cancelled'),
+ ('Boquilla', 'Nozzle'),
+ ('Cama', 'Bed'),
+ ('Velocidad', 'Speed'),
+ ('Ventilador', 'Fan'),
+ ('objetivo {value}', 'target {value}'),
+ ('objetivo —', 'target —'),
+ ('preset actual', 'current preset'),
+ ('solo imprimiendo', 'printing only'),
+ ('aux {value} %', 'aux {value} %'),
+ ('Control', 'Control'),
+ ('listo', 'ready'),
+ ('bloqueado', 'locked'),
+ ('sin conexión', 'offline'),
+ ('Nivelado', 'Leveling'),
+ ('Input shaper', 'Input shaper'),
+ ('Apagado', 'Auto shutdown'),
+ ('Limpiar errores', 'Clear errors'),
+ ('Cargar filamento aquí', 'Load filament here'),
+ ('Descargar filamento', 'Unload filament'),
+ ('No disponible mientras imprime o está en pausa.', 'Not available while printing or paused.'),
+ ('Cargar mueve filamento del slot al extrusor; descargar lo retrae.',
+  'Loading moves filament from the slot to the extruder; unloading retracts it.'),
+ ('Estación de materiales (IFS)', 'Material station (IFS)'),
+ ('{count} slots · activo {active}', '{count} slots · active {active}'),
+ ('{count} slots', '{count} slots'),
+ ('en uso', 'in use'),
+ ('Vacío', 'Empty'),
+ ('Leyendo la estación…', 'Reading material station…'),
+ ('Esta impresora no tiene estación IFS.', 'This printer has no IFS material station.'),
+ ('Material', 'Material'),
+ ('Color (paleta de 24)', 'Color (24-color palette)'),
+ ('Sin paleta cargada', 'No palette loaded'),
+ ('Ajustar', 'Adjust'),
+ ('Luz', 'Light'),
+ ('Encender', 'Turn on'),
+ ('Apagar', 'Turn off'),
+ ('Cámara', 'Camera'),
+ ('Sin señal de cámara', 'No camera signal'),
+ ('Temperaturas (histórico)', 'Temperatures (history)'),
+ ('Objetivo boquilla', 'Nozzle target'),
+ ('Objetivo cama', 'Bed target'),
+ ('Últimas ~120 muestras (10 min con sondeo cada 5 s). Se redibuja una vez por segundo.',
+  'Last ~120 samples (10 min at one sample every 5 s). Redrawn once per second.'),
+ ('Archivos', 'Files'),
+ ('Imprimir al terminar', 'Print when done'),
+ ('Trabajos guardados', 'Saved jobs'),
+ ('No hay archivos guardados.', 'No saved files.'),
+ ('La API no permite borrar archivos: no hay botón de borrado.',
+  'The API does not allow deleting files: there is no delete button.'),
+ ('SUBIR G-CODE / 3MF', 'UPLOAD G-CODE / 3MF'),
+ ('Subir', 'Upload'),
+ ('Imprimir', 'Print'),
+ ('En curso', 'Printing'),
+ ('sin miniatura', 'no preview'),
+ ('Actualizar', 'Refresh'),
+ ('Configuración', 'Settings'),
+ ('Impresoras y ajustes del plugin.', 'Printers and plugin settings.'),
+ ('Impresoras y preferencias del plugin.', 'Printers and plugin preferences.'),
+ ('Impresoras', 'Printers'),
+ ('Buscar', 'Search'),
+ ('Añadir', 'Add'),
+ ('Impresora activa', 'Active printer'),
+ ('Nombre', 'Name'),
+ ('IP', 'IP'),
+ ('Número de serie', 'Serial number'),
+ ('Printer ID (check code)', 'Printer ID (check code)'),
+ ('Intervalo de sondeo (segundos)', 'Poll interval (seconds)'),
+ ('Modo demo (datos simulados)', 'Demo mode (simulated data)'),
+ ('Avisar al terminar un trabajo', 'Notify when a job finishes'),
+ ('Avisar de errores', 'Notify on errors'),
+ ('Guardar', 'Save'),
+ ('Cancelar', 'Cancel'),
+ ('Cerrar', 'Close'),
+ ('Los mismos ajustes están en Plugins → FlashForge Monitor (sin el buscador UDP).',
+  'The same settings are under Plugins → FlashForge Monitor (without UDP discovery).'),
+ ('La impresora activa es la que se monitorea. El descubrimiento UDP puede estar bloqueado dentro '
+  'del Flatpak: si no encuentra nada, escribe la IP.',
+  'The active printer is the one monitored. UDP discovery may be blocked inside Flatpak: if '
+  'nothing is found, enter the IP manually.'),
+ ('No hay impresoras. Añade una o pulsa «Buscar».', 'No printers. Add one or press “Search”.'),
+ ('Encontradas (toca para añadir):', 'Found (tap to add):'),
+ ('No se encontraron impresoras — introduce la IP manualmente.',
+  'No printers found — enter the IP manually.'),
+ ('Esa impresora ya está en la lista', 'That printer is already in the list'),
+ ('Añadida', 'Added'),
+ ('Guardando configuración…', 'Saving settings…'),
+ ('Configuración guardada', 'Settings saved'),
+ ('No se pudo guardar la configuración.', 'Could not save the settings.'),
+ ('Configura tu impresora; mientras tanto se muestran datos de demostración.',
+  'Set up your printer; demo data is shown meanwhile.'),
+ ('Configura tu impresora para empezar.', 'Set up your printer to start.'),
+ ('Configurar', 'Set up'),
+ ('Sin configurar', 'Not configured'),
+ ('Conectando…', 'Connecting…'),
+ ('Error de conexión · reintentando… ({seconds} s)', 'Connection error · retrying… ({seconds} s)'),
+ ('Error de conexión', 'Connection error'),
+ ('Error desconocido.', 'Unknown error.'),
+ ('Reintentar', 'Retry'),
+ ('Sin respuesta del plugin', 'No response from plugin'),
+ ('No hay cámara configurada', 'No camera configured'),
+ ('Sin señal de cámara. Revisa que esté activada y acepta el permiso del puerto 8080.',
+  'No camera signal. Check that it is enabled and accept the port 8080 permission.'),
+ ('No se detectó window.orca. Abre esta pestaña desde OrcaSlicer.',
+  'window.orca was not detected. Open this tab from OrcaSlicer.'),
+ ('El puente de OrcaSlicer no está disponible.', 'The OrcaSlicer bridge is not available.'),
+ ('No se pudo enviar el mensaje al plugin:', 'Could not send the message to the plugin:'),
+ ('Sin datos todavía', 'No data yet'),
+ ('Sin impresora', 'No printer'),
+ ('Impresora', 'Printer'),
+ ('Idioma', 'Language'),
+ ('Automático (OrcaSlicer)', 'Auto (OrcaSlicer)'),
+ ('Español', 'Spanish'),
+ ('English', 'English'),
+ ('Preferencias', 'Preferences'),
+ ('Estado', 'Status'),
+ ('Aplicar', 'Apply'),
+ ('Guardar cambios', 'Save changes'),
+ ('Aceptar', 'OK'),
+ ('Confirmar', 'Confirm'),
+ ('Nivelando…', 'Leveling…'),
+ ('Input shaper…', 'Input shaper…'),
+ ('Calibrando…', 'Calibrating…'),
+ ('Calentando…', 'Heating…'),
+ ('Cargando filamento…', 'Loading filament…'),
+ ('Descargando filamento…', 'Unloading filament…'),
+ ('Cargando/Descargando filamento…', 'Loading/unloading filament…'),
+ ('Haciendo home…', 'Homing…'),
+ ('Ocupada…', 'Busy…'),
+ ('Ocupada — operación iniciada fuera de la pestaña.',
+  'Busy — operation started outside this tab.'),
+ ('La impresora está trabajando.', 'The printer is working.'),
+ ('La impresora se mueve sola — no la interrumpas.',
+  'The printer moves on its own — do not interrupt it.'),
+ ('La impresora está moviendo filamento. No la interrumpas.',
+  'The printer is moving filament. Do not interrupt it.'),
+ ('La impresora está moviendo filamento', 'The printer is moving filament'),
+ ('La impresora está descargando el trabajo.', 'The printer is downloading the job.'),
+ ('Recibiendo archivo…', 'Receiving file…'),
+ ('Localizando los ejes. No la interrumpas.', 'Locating axes. Do not interrupt it.'),
+ ('Esperando a que boquilla y cama alcancen el objetivo.',
+  'Waiting for nozzle and bed to reach target.'),
+ ('Controles bloqueados mientras la impresora trabaja.',
+  'Controls locked while the printer is working.'),
+ ('Movimiento bloqueado mientras imprime o está en pausa.',
+  'Movement locked while printing or paused.'),
+ ('La impresora no ha confirmado el homing (~M119). Pulsa «Ir a Home» para localizar los ejes '
+  'antes de mover el cabezal.',
+  'The printer has not confirmed homing (~M119). Press “Go Home” to locate the axes before moving '
+  'the head.'),
+ ('La impresora no ha confirmado el homing (~M119)',
+  'The printer has not confirmed homing (~M119)'),
+ ('Sin homing', 'Not homed'),
+ ('Homed ✓', 'Homed ✓'),
+ ('Ubica el cabezal', 'Locate the print head'),
+ ('Ir a Home', 'Go Home'),
+ ('Impresión completada.', 'Print completed.'),
+ ('Impresión cancelada.', 'Print cancelled.'),
+ ('Tiempo utilizado: —', 'Time used: —'),
+ ('Tiempo utilizado: {duration}', 'Time used: {duration}'),
+ ('Después de limpiar la cama, pulsa para desbloquear la impresora.',
+  'After clearing the bed, tap to unlock the printer.'),
+ ('Confirme', 'Confirm'),
+ ('Volver a imprimir', 'Print again'),
+ ('Volver a imprimir el mismo archivo', 'Print the same file again'),
+ ('Confirmar y desbloquear la impresora', 'Confirm and unlock the printer'),
+ ('La impresora espera confirmación', 'Printer awaiting confirmation'),
+ ('La impresora terminó un trabajo y espera confirmación — ¿limpiar la plataforma e imprimir '
+  '«{name}»?',
+  'The printer finished a job and is waiting for confirmation — clear the platform and print '
+  '“{name}”?'),
+ ('Limpiar e imprimir', 'Clear and print'),
+ ('Imprimir «{name}»', 'Print “{name}”'),
+ ('La impresión empezará inmediatamente y la impresora debe estar libre.',
+  'Printing will start immediately and the printer must be free.'),
+ ('Se usarán los colores de la estación IFS.', 'Material station colors will be used.'),
+ ('Temperatura de boquilla', 'Nozzle temperature'),
+ ('Temperatura de cama', 'Bed temperature'),
+ ('Velocidad de impresión', 'Print speed'),
+ ('Velocidad entre 50 y 500 %', 'Speed between 50 and 500%'),
+ ('Ventiladores', 'Fans'),
+ ('Vacío = no cambiar. 0 % apaga el ventilador.', 'Empty = do not change. 0% turns the fan off.'),
+ ('Ventilador 0–100 %', 'Fan 0–100%'),
+ ('Compensación Z', 'Z offset'),
+ ('Auto-apagado', 'Auto shutdown'),
+ ('La impresora se apagará sola tras el tiempo indicado.',
+  'The printer will turn off after the selected time.'),
+ ('Auto-apagado en {minutes} min', 'Auto shutdown in {minutes} min'),
+ ('Se cancelará el apagado programado.', 'The scheduled shutdown will be cancelled.'),
+ ('Desactivado', 'Off'),
+ ('Auto-apagado: {minutes} min', 'Auto shutdown: {minutes} min'),
+ ('Auto-apagado: desactivado', 'Auto shutdown: off'),
+ ('Limpiar error {code}', 'Clear error {code}'),
+ ('Se enviará el código exacto que reporta la impresora. Asegúrate de haber resuelto la causa.',
+  'The exact code reported by the printer will be sent. Make sure you have fixed the cause.'),
+ ('Limpiar', 'Clear'),
+ ('Detener la impresión', 'Stop printing'),
+ ('Se cancelará «{name}». Esta acción no se puede deshacer.',
+  '“{name}” will be cancelled. This cannot be undone.'),
+ ('Auto homing (todos los ejes)', 'Auto homing (all axes)'),
+ ('Auto homing', 'Auto homing'),
+ ('¿Iniciar auto homing? Se moverán TODOS los ejes, porque la API de la impresora solo permite '
+  'home completo.',
+  'Start auto homing? ALL axes will move, because the printer API only supports full homing.'),
+ ('Entiendo el riesgo y quiero continuar.', 'I understand the risk and want to continue.'),
+ ('Nivelado de cama', 'Bed leveling'),
+ ('La impresora se moverá sola durante la calibración. No toques la máquina ni la mesa.',
+  'The printer will move on its own during calibration. Do not touch the machine or the bed.'),
+ ('Iniciar', 'Start'),
+ ('Entiendo que la impresora se moverá sola.', 'I understand the printer will move on its own.'),
+ ('Subiendo {percent} % ({sent} / {total} MB)', 'Uploading {percent}% ({sent} / {total} MB)'),
+ ('Subiendo…', 'Uploading…'),
+ ('Archivo subido', 'File uploaded'),
+ ('No se pudo subir el archivo.', 'Could not upload the file.'),
+ ('Impresora cambiada', 'Printer changed'),
+ ('No se pudo cambiar de impresora.', 'Could not change printer.'),
+ ('No se pudo leer el IFS', 'Could not read the IFS'),
+ ('La impresora rechazó la orden.', 'The printer rejected the command.'),
+ ('No se pudo actualizar el slot.', 'Could not update the slot.'),
+ ('No se pudo limpiar la plataforma.', 'Could not clear the platform.'),
+ ('No se pudo leer la lista.', 'Could not read the list.'),
+ ('Buscando impresoras (2 s)…', 'Searching for printers (2 s)…'),
+ ('Aviso', 'Notice'),
+ ('Orden enviada', 'Command sent'),
+ ('Slot actualizado', 'Slot updated'),
+ ('Plataforma liberada. La impresora vuelve a ready.',
+  'Platform cleared. The printer is returning to ready.'),
+ ('Capa {layer} / {total}', 'Layer {layer} / {total}'),
+ ('Error {code}', 'Error {code}'),
+ ('Cargando filamento (slot {slot})…', 'Loading filament (slot {slot})…'),
+ ('Descargando filamento (slot {slot})…', 'Unloading filament (slot {slot})…'),
+ ('del slot {slot}', 'from slot {slot}'),
+ ('hacia el extrusor. ¿Continuar?', 'to the extruder. Continue?'),
+ ('La impresora moverá filamento desde el slot {slot} hacia el extrusor. ¿Continuar?',
+  'The printer will move filament from slot {slot} to the extruder. Continue?'),
+ ('La impresora retraerá el filamento del extrusor hacia el slot {slot}. ¿Continuar?',
+  'The printer will retract filament from the extruder back to slot {slot}. Continue?'),
+ ('Se subirá «{path}» y la impresión empezará al terminar la subida.',
+  '“{path}” will be uploaded and printing will start when the upload finishes.'),
+ ('Sin conexión · {label}', 'Offline · {label}'),
+ ('Modo demo · {label}', 'Demo mode · {label}'),
+ ('Modo demo: no se abre ninguna conexión.', 'Demo mode: no connection is opened.'),
+ ('Check code válido.', 'Valid check code.'),
+ ('Temperaturas aplicadas por HTTP.', 'Temperatures applied over HTTP.'),
+ ('Temperaturas aplicadas por TCP 8899 (fallback de AD5X).',
+  'Temperatures applied over TCP 8899 (AD5X fallback).'),
+ ('Temperaturas aplicadas.', 'Temperatures applied.'),
+ ('Ventiladores actualizados.', 'Fans updated.'),
+ ('Impresión iniciada.', 'Print started.'),
+ ('Homing iniciado (la impresora se moverá).', 'Homing started (the printer will move).'),
+ ('Movimiento enviado.', 'Move sent.'),
+ ('Extrusión enviada.', 'Extrusion sent.'),
+ ('Calibración iniciada (la impresora se moverá sola).',
+  'Calibration started (the printer will move on its own).'),
+ ('Error limpiado.', 'Error cleared.'),
+ ('Auto-apagado actualizado.', 'Auto shutdown updated.'),
+ ('Cargando filamento (la impresora se moverá).', 'Loading filament (the printer will move).'),
+ ('Descargando filamento (la impresora se moverá).', 'Unloading filament (the printer will move).'),
+ ('Slot inválido.', 'Invalid slot.'),
+ ('El material no puede estar vacío.', 'Material cannot be empty.'),
+ ('Índice de impresora no válido.', 'Invalid printer index.'),
+ ('Esa impresora no existe.', 'That printer does not exist.'),
+ ('Configura tu impresora para empezar a monitorear.', 'Set up your printer to start monitoring.'),
+ ('Configura la impresora antes de enviar órdenes.', 'Set up the printer before sending commands.'),
+ ('Configura la impresora antes de editar slots.', 'Set up the printer before editing slots.'),
+ ('Configura la IP de la impresora.', 'Set the printer IP.'),
+ ('Configura la IP de la impresora en Ajustes → FlashForge Monitor.',
+  'Set the printer IP in Settings → FlashForge Monitor.'),
+ ('Falta el número de serie (SN) de la impresora.', 'The printer serial number (SN) is missing.'),
+ ('Falta el check code: es el Printer ID de 8 caracteres que muestra la pantalla de la impresora '
+  '(LAN-only mode).',
+  'Missing check code: it is the 8-character Printer ID shown on the printer screen (LAN-only '
+  'mode).'),
+ ('La impresora devolvió un error (código {code}): {raw}.',
+  'The printer returned an error (code {code}): {raw}.'),
+ ('Respuesta inesperada de la impresora: {raw}.', 'Unexpected response from the printer: {raw}.'),
+ ('Respuesta inesperada de la impresora en {path}.',
+  'Unexpected response from the printer at {path}.'),
+ ('Respuesta no JSON de la impresora en {path}.', 'Non-JSON response from the printer at {path}.'),
+ ('No se pudo conectar con {host}:{port} ({reason}). Comprueba que está encendida y en LAN-only '
+  'mode.',
+  'Could not connect to {host}:{port} ({reason}). Check that it is on and in LAN-only mode.'),
+ ('No se pudo conectar con {host}:{port} ({reason}).',
+  'Could not connect to {host}:{port} ({reason}).'),
+ ('Tiempo de espera agotado al contactar {host}:{port}.', 'Timed out contacting {host}:{port}.'),
+ ('Error de red: {exc}', 'Network error: {exc}'),
+ ('La impresora respondió HTTP {code} en {path}.', 'The printer returned HTTP {code} at {path}.'),
+ ('La impresora respondió con un cuerpo vacío (petición no reconocida).',
+  'The printer returned an empty body (request not recognised).'),
+ ("La impresora no devolvió el objeto 'detail'.",
+  "The printer did not return the 'detail' object."),
+ ('La impresora no respondió a /uploadGcode.', 'The printer did not respond to /uploadGcode.'),
+ ('No se pudo usar el protocolo TCP {port} (fallback de temperatura): {exc}',
+  'Could not use TCP {port} (temperature fallback): {exc}'),
+ ('La impresora no confirmó el comando TCP: {reply}',
+  'The printer did not confirm the TCP command: {reply}'),
+ ('La impresora no confirmó el fin; revisa la impresora.',
+  'The printer did not confirm completion; check the printer.'),
+ ('La impresora no volvió a ready tras limpiar la plataforma (10 s). Confirma en la pantalla de la '
+  'impresora e inténtalo de nuevo.',
+  'The printer did not return to ready after clearing the platform (10 s). Confirm on the printer '
+  'screen and try again.'),
+ ('Sin permiso para leer {path}. Si OrcaSlicer pidió permiso, concédelo y vuelve a intentarlo (el '
+  'Flatpak solo ve algunas rutas).',
+  'No permission to read {path}. If OrcaSlicer asked for permission, grant it and try again '
+  '(Flatpak only sees some paths).'),
+ ('Error durante la subida: {exc}', 'Upload error: {exc}'),
+ ('El archivo {name} no tiene miniatura.', 'File {name} has no thumbnail.'),
+ ('El archivo {name} no está en la impresora.', 'File {name} is not on the printer.'),
+ ('El archivo usa la estación IFS pero no se han leído los slots.',
+  'The file uses the IFS station but the slots have not been read.'),
+ ('Falta el nombre del archivo.', 'The file name is missing.'),
+ ('Indica la ruta del archivo.', 'Enter the file path.'),
+ ('No existe el archivo {path}.', 'File {path} does not exist.'),
+ ('Extensión {extension} no admitida. Usa: {extensions}.',
+  'Unsupported extension {extension}. Use: {extensions}.'),
+ ('El archivo está vacío.', 'The file is empty.'),
+ ('El archivo ocupa {size} MB; el límite es {limit} MB.',
+  'The file is {size} MB; the limit is {limit} MB.'),
+ ('Eje no válido: {axis}', 'Invalid axis: {axis}'),
+ ('La distancia no puede ser 0.', 'Distance cannot be 0.'),
+ ('Selecciona al menos una calibración.', 'Select at least one calibration.'),
+ ('No hay ningún error activo que limpiar.', 'There is no active error to clear.'),
+ ('OrcaSlicer bloqueó el descubrimiento UDP (broadcast). Acepta el permiso de red o introduce la '
+  'IP manualmente.',
+  'OrcaSlicer blocked UDP discovery (broadcast). Accept the network permission or enter the IP '
+  'manually.'),
+ ('No se pudo hacer el descubrimiento UDP: {exc}', 'Could not run UDP discovery: {exc}'),
+ ('Acción desconocida: {kind}', 'Unknown action: {kind}'),
+ ('Acción ms_cmd no válida: {action}', 'Invalid ms_cmd action: {action}'),
+ ('Orden desconocida: {command}', 'Unknown command: {command}'),
+ ('Slot inválido: {slot}', 'Invalid slot: {slot}'),
+ ('Slot fuera de rango: {index}', 'Slot out of range: {index}'),
+ ('Indica al menos una temperatura.', 'Enter at least one temperature.'),
+ ('Indica al menos un ventilador.', 'Enter at least one fan.'),
+ ('El comando HTTP se aceptó pero la impresora no cambió el objetivo; el fallback TCP 8899 también '
+  'falló: {exc}',
+  'The HTTP command was accepted but the printer did not change the target; the TCP 8899 fallback '
+  'also failed: {exc}'),
+ ('Datos no válidos: {exc}', 'Invalid data: {exc}'),
+ ('Error interno en {where}: {exc}', 'Internal error in {where}: {exc}'),
+ ('✓ Nivelado completado', '✓ Leveling completed'),
+ ('✓ Input shaper completado', '✓ Input shaper completed'),
+ ('✓ Calibración completada', '✓ Calibration completed'),
+ ('✓ Filamento cargado (slot {slot})', '✓ Filament loaded (slot {slot})'),
+ ('✓ Filamento cargado', '✓ Filament loaded'),
+ ('✓ Filamento descargado (slot {slot})', '✓ Filament unloaded (slot {slot})'),
+ ('✓ Filamento descargado', '✓ Filament unloaded'),
+ ('✓ Homing completado', '✓ Homing completed'),
+ ('Calibración terminó con error ({code})', 'Calibration ended with error ({code})'),
+ ('Calibración terminó con error', 'Calibration ended with error'),
+ ('Carga/descarga de filamento terminó con error ({code})',
+  'Filament load/unload ended with error ({code})'),
+ ('Carga/descarga de filamento terminó con error', 'Filament load/unload ended with error'),
+ ('Homing terminó con error ({code})', 'Homing ended with error ({code})'),
+ ('Homing terminó con error', 'Homing ended with error'),
+ ('No se confirmó el fin de la nivelación; revisa la impresora.',
+  'Could not confirm leveling completion; check the printer.'),
+ ('No se confirmó el fin del input shaper; revisa la impresora.',
+  'Could not confirm input shaper completion; check the printer.'),
+ ('No se confirmó el fin de la carga de filamento; revisa la impresora.',
+  'Could not confirm filament load completion; check the printer.'),
+ ('No se confirmó el fin de la descarga de filamento; revisa la impresora.',
+  'Could not confirm filament unload completion; check the printer.'),
+ ('No se confirmó el fin del homing; revisa la impresora.',
+  'Could not confirm homing completion; check the printer.'),
+ ('Temperatura lista', 'Temperature ready'),
+ ('Puente de configuración no disponible.', 'Configuration bridge not available.'),
+ ('No se pudo leer la configuración: {error}', 'Could not read the settings: {error}'),
+ ('Guardando…', 'Saving…'),
+ ('Guardado ✔', 'Saved ✔'),
+ ('No se pudo guardar: {error}', 'Could not save: {error}'),
+ ('La impresora activa es la que se monitorea; las demás quedan guardadas.',
+  'The active printer is the one monitored; the others stay saved.'),
+ ('Modo demo (datos simulados, sin impresora)', 'Demo mode (simulated data, no printer)'),
+ ('Avisar de errores de la impresora', 'Notify on printer errors'),
+ ('El descubrimiento UDP («Buscar impresoras») está en el panel Configurar del dashboard: este '
+  'formulario está aislado y solo puede leer y escribir la configuración. Tras actualizar el '
+  'plugin, recuerda reactivarlo en el diálogo Plugins de OrcaSlicer.',
+  'UDP discovery (“Search printers”) is in the dashboard’s Set up panel: this form is isolated and '
+  'can only read and write the configuration. After updating the plugin, remember to reactivate it '
+  'in OrcaSlicer’s Plugins dialog.'),
+ ('Recargar', 'Reload'),
+ ('FlashForge Monitor · Configuración', 'FlashForge Monitor · Settings'),
+ ('La impresora', 'The printer'),
+ ('Printer ID', 'Printer ID'),
+ ('Activa', 'Active'),
+ ('Eliminar', 'Remove'),
+ ('Extrusor', 'Extruder'),
+ ('encendida', 'on'),
+ ('apagada', 'off'),
+ ('▲ sube la cama (Z−) · ▼ la baja (Z+)', '▲ raises the bed (Z−) · ▼ lowers it (Z+)'),
+ ('Haz ', 'Tap '),
+ ('antes de mover para no salir del área imprimible.',
+  'before moving so you stay inside the printable area.'),
+ ('No hay datos', 'No data'),
+ ('La impresora ', 'The '),
+ (' es la que se monitorea. El descubrimiento UDP puede estar bloqueado dentro del Flatpak: si no '
+  'encuentra nada, escribe la IP.',
+  ' printer is the one monitored. UDP discovery may be blocked inside Flatpak: if nothing is '
+  'found, enter the IP.'),
+ ('Quitar', 'Remove'),
+ ('El descubrimiento UDP («Buscar impresoras») está en el panel ',
+  'UDP discovery (“Search printers”) is in the '),
+ ('del dashboard: este formulario está aislado y solo puede leer y escribir la configuración. Tras '
+  'actualizar el plugin, recuerda reactivarlo en el diálogo ',
+  ' panel of the dashboard: this form is isolated and can only read and write the configuration. '
+  'After updating the plugin, remember to reactivate it in the '),
+ (' de OrcaSlicer.', ' dialog of OrcaSlicer.'),
+ ('Haz', 'Tap'),
+ ('La impresora activa es la que se monitorea. El descubrimiento UDP puede estar\n'
+  '    bloqueado dentro del Flatpak: si no encuentra nada, escribe la IP.',
+  'The active printer is the one monitored. UDP discovery may be blocked inside Flatpak: if '
+  'nothing is found, enter the IP manually.'),
+ ('Estación de materiales', 'Material station'),
+ ('Cámara de la impresora', 'Printer camera'),
+ ('Cámara no disponible en modo demo', 'Camera not available in demo mode'),
+ ('Sin conexión: los controles están deshabilitados.', 'Offline: controls are disabled.'),
+ ('Stream MJPEG por red local (puerto 8080)', 'MJPEG stream over local network (port 8080)'),
+ ('Reconectar', 'Reconnect'),
+ ('Subir G-code / 3MF', 'Upload G-code / 3MF'),
+ ('Abre esta sección para cargar los archivos de la impresora.',
+  'Open this section to load files from the printer.'),
+ ('API local HTTP 8898 · multi-impresora · UDP discovery',
+  'Local HTTP API 8898 · multi-printer · UDP discovery'),
+ ('Presets de Bambu Studio. Rango del firmware: 50–500 %.',
+  'Bambu Studio presets. Firmware range: 50–500%.'),
+ ('Pieza (%)', 'Part (%)'),
+ ('Auxiliar (%)', 'Auxiliary (%)'),
+ ('{temp} °C actual · objetivo {target} °C', '{temp} °C current · target {target} °C'),
+ ('{value} mm actual', '{value} mm current'),
+ ('Escribe la ruta del archivo', 'Enter the file path'),
+ ('Subir e imprimir', 'Upload and print'),
+ ('La página no puede abrir el selector de archivos: escribe la ruta completa (legible por el '
+  'Flatpak). Límite 200 MB. La primera lectura puede pedir permiso a Orca.',
+  'The page cannot open a file picker: enter the full path (readable by Flatpak). 200 MB limit. '
+  'The first read may ask Orca for permission.'),
+ ('aux —', 'aux —'),
+ ('Cargando…', 'Loading…'),
+ ('Dial de ejes XY. Flechas mueven 1 mm, Mayúsculas y flechas 10 mm, Enter hace home.',
+  'XY axes dial. Arrow keys move 1 mm, Shift+arrows 10 mm, Enter homes.'),
+ ('El descubrimiento UDP («Buscar impresoras») está en el panel',
+  'UDP discovery (“Search printers”) is in the'),
+ ('del dashboard: este formulario está aislado y solo puede leer y escribir la configuración. Tras '
+  'actualizar el plugin, recuerda reactivarlo en el diálogo',
+  'panel of the dashboard: this form is isolated and can only read and write the configuration. '
+  'After updating the plugin, remember to reactivate it in the'),
+ ('de OrcaSlicer.', 'dialog of OrcaSlicer.'),
+ ('Terminó: {job}', 'Finished: {job}'),
+ ('Trabajo cancelado: {job}', 'Job cancelled: {job}'),
+ ('Error de la impresora: {error}', 'Printer error: {error}'),
+ ('La impresora está ocupada con otra tarea.', 'The printer is busy with another task.'),
+ ('LAN-only mode desactivado en la impresora: actívalo en Ajustes y reinicia la impresora.',
+  'LAN-only mode is disabled on the printer: enable it in Settings and restart the printer.'),
+ ('Serial incorrecto: el número de serie no coincide con la impresora.',
+  'Incorrect serial: the serial number does not match the printer.'),
+ ('La impresora rechazó la petición: faltan parámetros o el formato no es válido.',
+  'The printer rejected the request: missing parameters or invalid format.'),
+ ('Color no válido: {value}. Usa el formato #RRGGBB (paleta de 24 colores).',
+  'Invalid color: {value}. Use #RRGGBB (24-color palette).'),
+ ('No se encontraron impresoras. Si estás en Flatpak, el broadcast puede estar bloqueado: '
+  'introduce la IP manualmente.',
+  'No printers found. On Flatpak, broadcast may be blocked: enter the IP manually.'),
+ ('Slot actualizado, pero el color no está en la paleta de 24: la pantalla de la impresora lo '
+  'dibujará blanco.',
+  'Slot updated, but the color is not in the 24-color palette: the printer screen will draw it '
+  'white.'),
+ ('Orden no válida: {action}', 'Invalid command: {action}'),
+ ('No disponible mientras imprime o está en pausa', 'Not available while printing or paused'),
+ ('Calibración completada', 'Calibration completed'),
+ ('✓ Operación completada', '✓ Operation completed')]
+
+STRINGS: dict[str, dict[str, str]] = {"es": {}, "en": {}}
+for _index, (_es, _en) in enumerate(_I18N_PAIRS):
+    _key = f"k{_index}"
+    STRINGS["es"][_key] = _es
+    STRINGS["en"][_key] = _en
+
+
+def tr(key: str, lang: str = "es", **fmt: Any) -> str:
+    """Traduce una clave de ``STRINGS`` y aplica ``str.format``."""
+    language = "en" if str(lang).lower().startswith("en") else "es"
+    text = STRINGS[language].get(key, STRINGS["es"].get(key, key))
+    try:
+        return text.format(**fmt)
+    except (KeyError, ValueError):
+        return text
+
+
+def _build_i18n_matchers():
+    exact: dict[str, str] = {}
+    patterns = []
+    for source, target in _I18N_PAIRS:
+        if "{" not in source:
+            exact[source] = target
+            continue
+        names: list[str] = []
+        regex = re.escape(source)
+        regex = re.sub(r"\\\{(\w+)\\\}", lambda m: (names.append(m.group(1)), "(.+?)")[1], regex)
+        try:
+            patterns.append((re.compile("^" + regex + "$"), target, names))
+        except re.error:
+            continue
+    return exact, patterns
+
+
+_I18N_EXACT, _I18N_PATTERNS = _build_i18n_matchers()
+
+
+def translate_text(text: Any, lang: str = "en") -> str:
+    """Traduce un texto de UI ya formateado (ES→EN) preservando placeholders."""
+    source = str(text or "")
+    if not str(lang).lower().startswith("en") or not source.strip():
+        return source
+    exact = _I18N_EXACT.get(source.strip())
+    normalized = " ".join(source.split())
+    if exact is None:
+        exact = _I18N_EXACT.get(normalized)
+    if exact is not None:
+        leading = source[:len(source) - len(source.lstrip())]
+        trailing = source[len(source.rstrip()):]
+        return leading + exact + trailing
+    for regex, target, names in _I18N_PATTERNS:
+        match = regex.match(normalized)
+        if not match:
+            continue
+        values = dict(zip(names, match.groups()))
+        try:
+            return target.format(**values)
+        except (KeyError, ValueError):
+            continue
+    return source
+
+
+def _normalize_language(value: Any) -> str:
+    language = str(value or "auto").strip().lower()
+    return language if language in ("auto", "es", "en") else "auto"
+
+
+def _detect_orca_language() -> str:
+    """Idioma de la app vía ``orca.host.app_language()`` (documentado)."""
+    try:
+        getter = getattr(getattr(orca, "host", None), "app_language", None)
+        if callable(getter):
+            return str(getter() or "")
+    except Exception:
+        pass
+    return ""
+
+
+def resolve_language(cfg: dict[str, Any] | None) -> str:
+    """``language`` efectivo: es/en fijo o auto → app de Orca (fallback en)."""
+    requested = _normalize_language((cfg or {}).get("language"))
+    if requested in ("es", "en"):
+        return requested
+    detected = _detect_orca_language().strip().lower()
+    if detected.startswith("es"):
+        return "es"
+    # auto sin detección (o idioma no soportado) → inglés para el hub.
+    return "en"
 
 
 # ---------------------------------------------------------------------------
@@ -2927,13 +3509,21 @@ _DASHBOARD_HTML = r"""<!DOCTYPE html>
   <div class="discover-results" id="discover-results" hidden></div>
   <div class="printer-list" id="printer-list"></div>
   <div class="hint">
-    La impresora <strong>activa</strong> es la que se monitorea. El descubrimiento
-    UDP puede estar bloqueado dentro del Flatpak: si no encuentra nada, escribe la IP.
+    La impresora activa es la que se monitorea. El descubrimiento UDP puede estar
+    bloqueado dentro del Flatpak: si no encuentra nada, escribe la IP.
   </div>
 
   <div class="field" style="margin-top:14px">
     <label for="f-interval">Intervalo de sondeo (segundos)</label>
     <input type="number" id="f-interval" min="1" max="120" step="1" value="5" />
+  </div>
+  <div class="field" style="margin-top:10px">
+    <label for="f-language">Idioma</label>
+    <select id="f-language" class="select">
+      <option value="auto">Automático (OrcaSlicer)</option>
+      <option value="es">Español</option>
+      <option value="en">English</option>
+    </select>
   </div>
 
   <label class="check-inline" for="f-mock" style="margin-top:8px">
@@ -2982,6 +3572,9 @@ _DASHBOARD_HTML = r"""<!DOCTYPE html>
 
 <datalist id="material-list"></datalist>
 
+<script>
+window.__I18N_PAIRS = {{I18N_JSON}};
+</script>
 <script>
 (function () {
   "use strict";
@@ -3081,11 +3674,168 @@ _DASHBOARD_HTML = r"""<!DOCTYPE html>
     homed: null,
     intent: null,
     completedJob: "",
+    language: "es",
     platformBusy: false,
     popAnchor: null,
     lastFocus: null,
     extraAction: null
   };
+
+  var i18nExact = Object.create(null);
+  var i18nPatterns = [];
+  var i18nNodes = [];
+  var i18nAttrs = [];
+  var i18nNodeBase = new WeakMap();
+  var i18nAttrBase = new WeakMap();
+  var i18nCurrent = "es";
+  var i18nApplying = false;
+
+  function buildI18n() {
+    var pairs = Array.isArray(window.__I18N_PAIRS) ? window.__I18N_PAIRS : [];
+    pairs.forEach(function (pair) {
+      var es = String(pair[0] || "");
+      var en = String(pair[1] || "");
+      if (!es) { return; }
+      if (es.indexOf("{") < 0) { i18nExact[es] = en; return; }
+      var names = [];
+      var escaped = es.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      escaped = escaped.replace(/\\\{(\w+)\\\}/g, function (_all, name) {
+        names.push(name); return "(.+?)";
+      });
+      try { i18nPatterns.push({re: new RegExp("^" + escaped + "$"), en: en, names: names}); }
+      catch (err) {}
+    });
+  }
+
+  function translateText(text) {
+    var source = String(text == null ? "" : text);
+    if (i18nCurrent !== "en" || !source.trim()) { return source; }
+    var leading = source.match(/^\s*/)[0];
+    var trailing = source.match(/\s*$/)[0];
+    var core = source.trim();
+    var normalized = core.replace(/\s+/g, " ");
+    if (Object.prototype.hasOwnProperty.call(i18nExact, core)) {
+      return leading + i18nExact[core] + trailing;
+    }
+    if (Object.prototype.hasOwnProperty.call(i18nExact, normalized)) {
+      return leading + i18nExact[normalized] + trailing;
+    }
+    for (var i = 0; i < i18nPatterns.length; i++) {
+      var item = i18nPatterns[i];
+      var match = item.re.exec(normalized);
+      if (!match) { continue; }
+      var values = {};
+      for (var n = 0; n < item.names.length; n++) { values[item.names[n]] = match[n + 1]; }
+      var out = item.en.replace(/\{(\w+)\}/g, function (_all, name) {
+        return values[name] !== undefined ? values[name] : "";
+      });
+      return leading + out + trailing;
+    }
+    return source;
+  }
+
+  function translateNode(node) {
+    if (!node || !node.nodeValue || !node.nodeValue.trim()) { return; }
+    if (i18nApplying) { return; }
+    var base = i18nNodeBase.get(node);
+    if (base === undefined) {
+      base = node.nodeValue;
+      i18nNodeBase.set(node, base);
+      i18nNodes.push(node);
+    }
+    if (i18nCurrent === "en") {
+      var translated = translateText(base);
+      if (node.nodeValue !== translated) {
+        base = node.nodeValue;
+        i18nNodeBase.set(node, base);
+        translated = translateText(base);
+      }
+      if (node.nodeValue !== translated) {
+        i18nApplying = true; node.nodeValue = translated; i18nApplying = false;
+      }
+    } else if (node.nodeValue !== base) {
+      i18nApplying = true; node.nodeValue = base; i18nApplying = false;
+    }
+  }
+
+  function translateAttribute(el, attr) {
+    if (!el || !el.getAttribute) { return; }
+    var value = el.getAttribute(attr);
+    if (!value || !value.trim()) { return; }
+    var map = i18nAttrBase.get(el);
+    if (!map) { map = {}; i18nAttrBase.set(el, map); }
+    if (map[attr] === undefined) {
+      map[attr] = value;
+      i18nAttrs.push([el, attr]);
+    }
+    if (i18nCurrent === "en") {
+      var translated = translateText(value);
+      if (translated !== value) { el.setAttribute(attr, translated); }
+    } else if (value !== map[attr]) {
+      el.setAttribute(attr, map[attr]);
+    }
+  }
+
+  function applyI18n(root) {
+    var scope = root || document.body;
+    if (!scope) { return; }
+    var walker = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT, {
+      acceptNode: function (node) {
+        var parent = node.parentNode;
+        if (!parent) { return NodeFilter.FILTER_REJECT; }
+        var tag = parent.nodeName;
+        if (tag === "SCRIPT" || tag === "STYLE" || tag === "TEXTAREA") {
+          return NodeFilter.FILTER_REJECT;
+        }
+        return NodeFilter.FILTER_ACCEPT;
+      }
+    });
+    var nodes = [];
+    while (walker.nextNode()) { nodes.push(walker.currentNode); }
+    nodes.forEach(translateNode);
+    var elements = [];
+    if (scope.nodeType === 1) { elements.push(scope); }
+    if (scope.querySelectorAll) {
+      Array.prototype.push.apply(elements, scope.querySelectorAll("*"));
+    }
+    elements.forEach(function (el) {
+      translateAttribute(el, "placeholder");
+      translateAttribute(el, "title");
+      translateAttribute(el, "aria-label");
+    });
+  }
+
+  function restoreI18n() {
+    i18nApplying = true;
+    i18nNodes.forEach(function (node) {
+      var base = i18nNodeBase.get(node);
+      if (base !== undefined && node.nodeValue !== base) { node.nodeValue = base; }
+    });
+    i18nAttrs.forEach(function (pair) {
+      var el = pair[0], attr = pair[1];
+      var map = el && i18nAttrBase.get(el);
+      if (map && map[attr] !== undefined) { el.setAttribute(attr, map[attr]); }
+    });
+    i18nApplying = false;
+  }
+
+  function setLanguage(language) {
+    var next = language === "es" ? "es" : "en";
+    if (next === i18nCurrent) {
+      applyI18n(document.body);
+      return;
+    }
+    i18nCurrent = next;
+    ui.language = next;
+    document.documentElement.setAttribute("lang", next);
+    if (next === "es") {
+      restoreI18n();
+      if (ui.status) { renderStatus(ui.status); }
+      renderSlots();
+      if (ui.filesLoaded) { renderFiles({ok: true, files: ui.files}); }
+    }
+    applyI18n(document.body);
+  }
 
   function $(id) { return document.getElementById(id); }
   function setText(id, text) { var el = $(id); if (el) { el.textContent = text; } }
@@ -3659,6 +4409,7 @@ _DASHBOARD_HTML = r"""<!DOCTYPE html>
 
     if (!ui.bannerSticky) { hideBanner(); }
     renderSlots();
+    applyI18n(document.body);
   }
 
   function updateCamera(url) {
@@ -3764,6 +4515,7 @@ _DASHBOARD_HTML = r"""<!DOCTYPE html>
       })(i, slot);
       host.appendChild(button);
     }
+    applyI18n(host);
 
     var label = (ifs.slot_count ? ifs.slot_count : 4) + " slots";
     if (activeId) { label += " · activo " + activeId; }
@@ -4080,6 +4832,7 @@ _DASHBOARD_HTML = r"""<!DOCTYPE html>
     var list = $("file-list");
     ui.filesLoaded = true;
     list.innerHTML = "";
+    applyI18n(list);
     if (!msg.ok) {
       var failure = document.createElement("div");
       failure.className = "files-empty";
@@ -4662,6 +5415,7 @@ _DASHBOARD_HTML = r"""<!DOCTYPE html>
     cfg = (next && typeof next === "object") ? next : {};
     intervalSec = Math.max(1, Number(cfg.poll_interval || cfg.interval) || 5);
     $("demo-badge").hidden = !cfg.mock;
+    setLanguage(String(cfg.resolved_language || (cfg.language === "es" ? "es" : "en")));
     fillPrinterSelect();
     if (previous !== cfg.active_printer) {
       resetTempHistory();
@@ -4764,6 +5518,7 @@ _DASHBOARD_HTML = r"""<!DOCTYPE html>
     });
     renderPrinterRows(printers, Number(cfg.active_printer) || 0);
     $("f-interval").value = String(Math.round(intervalSec));
+    $("f-language").value = cfg.language || "auto";
     $("f-mock").checked = !!cfg.mock;
     $("f-notify-finish").checked = cfg.notify_on_finish !== false;
     $("f-notify-error").checked = cfg.notify_on_error !== false;
@@ -4863,6 +5618,7 @@ _DASHBOARD_HTML = r"""<!DOCTYPE html>
         printers: printers,
         active_printer: Math.max(0, activeIndex),
         poll_interval: interval,
+        language: $("f-language").value,
         mock: $("f-mock").checked,
         notify_on_finish: $("f-notify-finish").checked,
         notify_on_error: $("f-notify-error").checked
@@ -5032,6 +5788,7 @@ _DASHBOARD_HTML = r"""<!DOCTYPE html>
   }
 
   function boot() {
+    buildI18n();
     paintIcons(document);
     buildDial();
     setMotionLocked(true, "offline");
@@ -5131,6 +5888,14 @@ _DASHBOARD_HTML = r"""<!DOCTYPE html>
       if (button) { removePrinter(Number(button.getAttribute("data-remove"))); }
     });
     $("f-save").addEventListener("click", saveForm);
+    $("f-language").addEventListener("change", function () {
+      var value = this.value;
+      var optimistic = value === "auto"
+        ? String(cfg.resolved_language || "en")
+        : value;
+      applyConfig(Object.assign({}, cfg, {language: value, resolved_language: optimistic}));
+      saveForm();
+    });
     $("f-close").addEventListener("click", closeDrawer);
 
     // Modal
@@ -5189,6 +5954,16 @@ _DASHBOARD_HTML = r"""<!DOCTYPE html>
 
     fillForm();
     fillPrinterSelect();
+    applyI18n(document.body);
+    var i18nPending = false;
+    new MutationObserver(function () {
+      if (i18nApplying || i18nCurrent !== "en" || i18nPending) { return; }
+      i18nPending = true;
+      requestAnimationFrame(function () {
+        i18nPending = false;
+        applyI18n(document.body);
+      });
+    }).observe(document.body, {subtree: true, childList: true, characterData: true});
 
     if (!bridge || typeof bridge.onMessage !== "function") {
       document.body.classList.remove("booting");
@@ -5278,13 +6053,13 @@ _CONFIG_HTML = r"""<!DOCTYPE html>
   ::-webkit-scrollbar { width: 9px; }
   ::-webkit-scrollbar-thumb { background: var(--surface-2); border-radius: 99px; }
   h1, h2 { margin: 0; font-weight: 650; }
-  button, input { font-family: inherit; }
+  button, input, select { font-family: inherit; }
   button { cursor: pointer; }
-  input[type=text], input[type=password], input[type=number] {
+  input[type=text], input[type=password], input[type=number], select {
     background: var(--surface); border: 1px solid var(--border); border-radius: 9px;
     color: var(--fg); padding: 8px 10px; font-size: 13px; width: 100%;
   }
-  input:focus-visible, button:focus-visible {
+  input:focus-visible, select:focus-visible, button:focus-visible {
     outline: 2px solid var(--accent); outline-offset: 2px;
   }
   .header { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
@@ -5371,7 +6146,7 @@ _CONFIG_HTML = r"""<!DOCTYPE html>
     </div>
     <div id="printers"></div>
     <div class="hint">
-      La impresora <strong>activa</strong> es la que se monitorea; las demás quedan guardadas.
+      La impresora activa es la que se monitorea; las demás quedan guardadas.
     </div>
   </div>
 
@@ -5380,6 +6155,14 @@ _CONFIG_HTML = r"""<!DOCTYPE html>
     <div class="field">
       <label for="interval">Intervalo de sondeo (segundos)</label>
       <input type="number" id="interval" min="1" max="120" step="1" value="5" />
+    </div>
+    <div class="field">
+      <label for="language">Idioma</label>
+      <select id="language">
+        <option value="auto">Automático (OrcaSlicer)</option>
+        <option value="es">Español</option>
+        <option value="en">English</option>
+      </select>
     </div>
     <label class="check" for="mock">
       <input type="checkbox" id="mock" checked />
@@ -5408,6 +6191,9 @@ _CONFIG_HTML = r"""<!DOCTYPE html>
   </div>
 
 <script>
+window.__I18N_PAIRS = {{I18N_JSON}};
+</script>
+<script>
 (function () {
   "use strict";
 
@@ -5415,6 +6201,7 @@ _CONFIG_HTML = r"""<!DOCTYPE html>
   var saveBtn = document.getElementById("save");
   var statusEl = document.getElementById("status");
   var current = { printers: [], active: 0 };
+  var lastResolved = "en";
 
   function setStatus(kind, text) {
     statusEl.className = kind || "";
@@ -5535,6 +6322,9 @@ _CONFIG_HTML = r"""<!DOCTYPE html>
       current = fromConfig(cfg);
       render(current.printers, current.active);
       $("interval").value = String(Math.round(Number(cfg.poll_interval || cfg.interval) || 5));
+      $("language").value = cfg.language || "auto";
+      lastResolved = String(cfg.resolved_language || (cfg.language === "es" ? "es" : "en"));
+      setLang(lastResolved);
       $("mock").checked = (cfg.mock === undefined) ? true : !!cfg.mock;
       $("notify_finish").checked = cfg.notify_on_finish !== false;
       $("notify_error").checked = cfg.notify_on_error !== false;
@@ -5561,6 +6351,7 @@ _CONFIG_HTML = r"""<!DOCTYPE html>
       printers: printers,
       active_printer: active,
       poll_interval: interval,
+      language: $("language").value,
       mock: $("mock").checked,
       notify_on_finish: $("notify_finish").checked,
       notify_on_error: $("notify_error").checked
@@ -5602,6 +6393,150 @@ _CONFIG_HTML = r"""<!DOCTYPE html>
 
   saveBtn.addEventListener("click", saveConfig);
   $("reload").addEventListener("click", loadConfig);
+  var i18nExact = Object.create(null);
+  var i18nPatterns = [];
+  var i18nNodes = [];
+  var i18nAttrs = [];
+  var i18nNodeBase = new WeakMap();
+  var i18nAttrBase = new WeakMap();
+  var currentLang = "es";
+  var i18nApplying = false;
+
+  function buildI18n() {
+    var pairs = Array.isArray(window.__I18N_PAIRS) ? window.__I18N_PAIRS : [];
+    pairs.forEach(function (pair) {
+      var es = String(pair[0] || "");
+      var en = String(pair[1] || "");
+      if (!es) { return; }
+      if (es.indexOf("{") < 0) { i18nExact[es] = en; return; }
+      var names = [];
+      var escaped = es.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      escaped = escaped.replace(/\\\{(\w+)\\\}/g, function (_all, name) {
+        names.push(name); return "(.+?)";
+      });
+      try { i18nPatterns.push({re: new RegExp("^" + escaped + "$"), en: en, names: names}); }
+      catch (err) {}
+    });
+  }
+
+  function translateText(text) {
+    var source = String(text == null ? "" : text);
+    if (currentLang !== "en" || !source.trim()) { return source; }
+    var leading = source.match(/^\s*/)[0];
+    var trailing = source.match(/\s*$/)[0];
+    var core = source.trim();
+    var normalized = core.replace(/\s+/g, " ");
+    if (Object.prototype.hasOwnProperty.call(i18nExact, core)) {
+      return leading + i18nExact[core] + trailing;
+    }
+    if (Object.prototype.hasOwnProperty.call(i18nExact, normalized)) {
+      return leading + i18nExact[normalized] + trailing;
+    }
+    for (var i = 0; i < i18nPatterns.length; i++) {
+      var item = i18nPatterns[i];
+      var match = item.re.exec(normalized);
+      if (!match) { continue; }
+      var values = {};
+      for (var n = 0; n < item.names.length; n++) { values[item.names[n]] = match[n + 1]; }
+      return leading + item.en.replace(/\{(\w+)\}/g, function (_all, name) {
+        return values[name] !== undefined ? values[name] : "";
+      }) + trailing;
+    }
+    return source;
+  }
+
+  function translateNode(node) {
+    if (!node || !node.nodeValue || !node.nodeValue.trim() || i18nApplying) { return; }
+    var base = i18nNodeBase.get(node);
+    if (base === undefined) {
+      base = node.nodeValue; i18nNodeBase.set(node, base); i18nNodes.push(node);
+    }
+    if (currentLang === "en") {
+      var out = translateText(base);
+      if (node.nodeValue !== out) {
+        base = node.nodeValue; i18nNodeBase.set(node, base); out = translateText(base);
+      }
+      if (node.nodeValue !== out) { i18nApplying = true; node.nodeValue = out; i18nApplying = false; }
+    } else if (node.nodeValue !== base) {
+      i18nApplying = true; node.nodeValue = base; i18nApplying = false;
+    }
+  }
+
+  function translateAttr(el, attr) {
+    var value = el.getAttribute && el.getAttribute(attr);
+    if (!value || !value.trim()) { return; }
+    var map = i18nAttrBase.get(el);
+    if (!map) { map = {}; i18nAttrBase.set(el, map); }
+    if (map[attr] === undefined) { map[attr] = value; i18nAttrs.push([el, attr]); }
+    if (currentLang === "en") {
+      var out = translateText(value);
+      if (out !== value) { el.setAttribute(attr, out); }
+    } else if (value !== map[attr]) {
+      el.setAttribute(attr, map[attr]);
+    }
+  }
+
+  function applyI18n(root) {
+    var scope = root || document.body;
+    if (!scope) { return; }
+    var walker = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT, {
+      acceptNode: function (node) {
+        var parent = node.parentNode;
+        if (!parent) { return NodeFilter.FILTER_REJECT; }
+        var tag = parent.nodeName;
+        if (tag === "SCRIPT" || tag === "STYLE" || tag === "TEXTAREA") {
+          return NodeFilter.FILTER_REJECT;
+        }
+        return NodeFilter.FILTER_ACCEPT;
+      }
+    });
+    var nodes = [];
+    while (walker.nextNode()) { nodes.push(walker.currentNode); }
+    nodes.forEach(translateNode);
+    var elements = scope.querySelectorAll ? Array.prototype.slice.call(scope.querySelectorAll("*")) : [];
+    if (scope.nodeType === 1) { elements.unshift(scope); }
+    elements.forEach(function (el) {
+      translateAttr(el, "placeholder");
+      translateAttr(el, "title");
+      translateAttr(el, "aria-label");
+    });
+  }
+
+  function restoreI18n() {
+    i18nApplying = true;
+    i18nNodes.forEach(function (node) {
+      var base = i18nNodeBase.get(node);
+      if (base !== undefined) { node.nodeValue = base; }
+    });
+    i18nAttrs.forEach(function (pair) {
+      var map = pair[0] && i18nAttrBase.get(pair[0]);
+      if (map && map[pair[1]] !== undefined) { pair[0].setAttribute(pair[1], map[pair[1]]); }
+    });
+    i18nApplying = false;
+  }
+
+  function setLang(language) {
+    var next = language === "es" ? "es" : "en";
+    if (next === currentLang) { applyI18n(document.body); return; }
+    currentLang = next;
+    document.documentElement.setAttribute("lang", next);
+    if (next === "es") { restoreI18n(); }
+    applyI18n(document.body);
+    var title = translateText("FlashForge Monitor · Configuración");
+    document.title = title;
+  }
+
+  buildI18n();
+  $("language").addEventListener("change", function () {
+    var value = this.value;
+    setLang(value === "auto" ? lastResolved : value);
+  });
+  applyI18n(document.body);
+  new MutationObserver(function () {
+    if (i18nApplying || currentLang !== "en") { return; }
+    requestAnimationFrame(function () { applyI18n(document.body); });
+  }).observe(document.body, {subtree: true, childList: true, characterData: true});
+
   loadConfig();
 })();
 </script>
@@ -5710,6 +6645,7 @@ class _FlashForgePageLogic:
         self._local_intent: dict[str, Any] | None = None
         self._intent_suppress_until = 0.0
         self._rescue_attempted = False
+        self._lang = "en"
 
     # -- contrato de la capability -----------------------------------------
 
@@ -5719,7 +6655,9 @@ class _FlashForgePageLogic:
     def get_ui(self) -> str:
         """HTML del dashboard (se pide la primera vez que se muestra la pestaña)."""
         self._ensure_state()
-        return _DASHBOARD_HTML.replace("{{VERSION}}", PLUGIN_VERSION)
+        return (_DASHBOARD_HTML
+                .replace("{{VERSION}}", PLUGIN_VERSION)
+                .replace("{{I18N_JSON}}", json.dumps(_I18N_PAIRS, ensure_ascii=False)))
 
     # -- configuración ------------------------------------------------------
 
@@ -5831,7 +6769,7 @@ class _FlashForgePageLogic:
 
         migrated, changed = _migrate_config(stored)
         if changed:
-            _log("config v1 migrada a v2 (impresoras) conservando credenciales")
+            _log("config migrada a v3 (impresoras + language) conservando credenciales")
             try:
                 super().save_config(json.dumps(migrated))  # type: ignore[misc]
             except Exception as exc:
@@ -5890,7 +6828,9 @@ class _FlashForgePageLogic:
         return True
 
     def get_config_ui(self) -> str:
-        return _CONFIG_HTML
+        return _CONFIG_HTML.replace(
+            "{{I18N_JSON}}", json.dumps(_I18N_PAIRS, ensure_ascii=False)
+        )
 
     # -- ciclo de vida ------------------------------------------------------
 
@@ -6214,6 +7154,7 @@ class _FlashForgePageLogic:
         """(Re)crea el cliente para la impresora activa. Solo desde el worker."""
         effective = _effective_config(cfg)
         self._cfg = effective
+        self._lang = resolve_language(effective)
         self._interval = clamp_interval(
             effective.get("poll_interval", DEFAULT_INTERVAL)
         )
@@ -6510,6 +7451,7 @@ class _FlashForgePageLogic:
         ``orca.host.ui.push_notification`` no existe en esta versión, se degrada
         a solo banner (try/except silencioso en el log).
         """
+        text = translate_text(text, self._lang)
         self._post({"type": "notification", "level": level, "message": text,
                     "ts": time.time()})
         if orca is None:  # fuera de OrcaSlicer (tests)
@@ -6876,6 +7818,9 @@ class _FlashForgePageLogic:
     def _post(self, data: dict[str, Any]) -> None:
         """Envía JSON a la página. Nunca lanza (se descarta si no existe)."""
         try:
+            if isinstance(data, dict) and isinstance(data.get("message"), str):
+                data = dict(data)
+                data["message"] = translate_text(data["message"], self._lang)
             self.post_message(data)
         except Exception as exc:
             _log(f"post_message() falló: {exc!r}")
@@ -6913,6 +7858,7 @@ def _sanitize_config(cfg: dict[str, Any]) -> dict[str, Any]:
         "poll_interval": DEFAULT_INTERVAL,
         "notify_on_finish": True,
         "notify_on_error": True,
+        "language": "auto",
         "mock": True,
     }
     if not isinstance(cfg, dict):
@@ -6937,20 +7883,23 @@ def _sanitize_config(cfg: dict[str, Any]) -> dict[str, Any]:
     cleaned["poll_interval"] = clamp_interval(interval)
     cleaned["notify_on_finish"] = bool(cfg.get("notify_on_finish", True))
     cleaned["notify_on_error"] = bool(cfg.get("notify_on_error", True))
+    cleaned["language"] = _normalize_language(cfg.get("language"))
     cleaned["mock"] = bool(cfg.get("mock", True))
     return cleaned
 
 
 def _migrate_config(parsed: dict[str, Any]) -> tuple[dict[str, Any], bool]:
-    """Migra el schema v1 (ip/serial/check_code en la raíz) al v2.
+    """Migra el schema v1 (ip/serial/check_code en la raíz) al v3.
 
-    Devuelve ``(config_v2, hubo_migración)``. Nunca pierde credenciales: los
+    Devuelve ``(config_v3, hubo_migración)``. Nunca pierde credenciales: los
     valores antiguos pasan a ``printers[0]``.
     """
     if not isinstance(parsed, dict):
         return _sanitize_config({}), False
     if isinstance(parsed.get("printers"), list):
-        return _sanitize_config(parsed), False
+        cleaned = _sanitize_config(parsed)
+        # v2 → v3: añade language="auto" si faltaba.
+        return cleaned, "language" not in parsed
 
     legacy_keys = ("host", "serial", "check_code", "interval")
     if not any(key in parsed for key in legacy_keys):
@@ -6975,6 +7924,7 @@ def _migrate_config(parsed: dict[str, Any]) -> tuple[dict[str, Any], bool]:
         "poll_interval": parsed.get("interval", DEFAULT_INTERVAL),
         "notify_on_finish": True,
         "notify_on_error": True,
+        "language": "auto",
         # v1 traía mock=True por defecto; respétalo, pero sin impresora el
         # dashboard debe seguir arrancando en demo.
         "mock": bool(parsed.get("mock", not printers)),
@@ -7105,6 +8055,8 @@ def _public_config(cfg: dict[str, Any]) -> dict[str, Any]:
         "interval": interval,  # alias: compatibilidad con el dashboard v0.2
         "notify_on_finish": bool(effective.get("notify_on_finish")),
         "notify_on_error": bool(effective.get("notify_on_error")),
+        "language": _normalize_language(effective.get("language")),
+        "resolved_language": resolve_language(effective),
         "mock": bool(effective.get("mock")),
         "demo_printers": demo,
     }

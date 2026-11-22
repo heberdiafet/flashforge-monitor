@@ -20,7 +20,7 @@ import sys
 import zipfile
 
 NAME = "FlashForgeMonitor"
-VERSION = "0.9.0"
+VERSION = "0.10.0"
 NORMALIZED = "flashforgemonitor"
 DIST_INFO = f"flashforge_monitor-{VERSION}.dist-info"
 WHEEL_NAME = f"{NORMALIZED}-{VERSION}-py3-none-any.whl"

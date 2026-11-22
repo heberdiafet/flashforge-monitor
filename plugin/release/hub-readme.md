@@ -8,6 +8,8 @@ Turn OrcaSlicer into a full command center for the FlashForge **AD5X** and **Adv
 
 ## Features
 
+- **English & Spanish UI** with auto-detection from OrcaSlicer (requested by @Meechi91).
+
 - **Live dashboard** — printer state, nozzle & bed temperatures, job progress, ETA, layer count and model thumbnail, updated every 2 seconds while printing
 - **IFS material station** — all 4 slots with material and color in Bambu-AMS-style cards; edit any slot from the plugin with the official 24-color palette
 - **Axis control** — authentic Bambu Studio 3-ring jog dial (step encoded by radius: ±10 mm outer ring, ±1 mm inner ring, Home at the center), Z strip and extruder with cold-nozzle protection. Fully keyboard operable

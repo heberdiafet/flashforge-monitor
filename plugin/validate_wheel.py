@@ -23,8 +23,8 @@ import types
 import zipfile
 
 ROOT = pathlib.Path(__file__).resolve().parent
-DEFAULT = ROOT / "dist" / "flashforgemonitor-0.9.0-py3-none-any.whl"
-VERSION = "0.9.0"
+DEFAULT = ROOT / "dist" / "flashforgemonitor-0.10.0-py3-none-any.whl"
+VERSION = "0.10.0"
 STABLE = "flashforge_monitor_any.whl"
 PACKAGE = "flashforge_monitor"
 
@@ -82,7 +82,7 @@ def validate(path: pathlib.Path) -> int:
         metadata = metadata_headers(wheel.read(f"{dist_info}/METADATA"))
         check("METADATA Name = FlashForgeMonitor",
               metadata.get("name") == "FlashForgeMonitor", metadata.get("name", ""))
-        check("METADATA Version = 0.9.0",
+        check("METADATA Version = 0.10.0",
               metadata.get("version") == VERSION, metadata.get("version", ""))
         check("METADATA Author = Heberdiafet",
               metadata.get("author") == "Heberdiafet", metadata.get("author", ""))
@@ -101,7 +101,7 @@ def validate(path: pathlib.Path) -> int:
               wheel_headers.get("root-is-purelib") == "true",
               wheel_headers.get("root-is-purelib", ""))
         check("nombre de archivo canónico o estable",
-              path.name in ("flashforgemonitor-0.9.0-py3-none-any.whl", STABLE),
+              path.name in ("flashforgemonitor-0.10.0-py3-none-any.whl", STABLE),
               path.name)
 
         top_level = [line.strip() for line in
@@ -172,7 +172,7 @@ def validate(path: pathlib.Path) -> int:
                         del sys.modules[module_name]
                 pkg = importlib.import_module(PACKAGE)
                 check("import con orca=None", True)
-                check("PLUGIN_VERSION = 0.9.0",
+                check("PLUGIN_VERSION = 0.10.0",
                       getattr(pkg, "PLUGIN_VERSION", None) == VERSION,
                       str(getattr(pkg, "PLUGIN_VERSION", None)))
                 check("FlashForgeClient disponible sin Orca",

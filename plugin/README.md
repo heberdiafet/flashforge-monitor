@@ -23,7 +23,7 @@ Sin dependencias externas: solo stdlib de Python (`urllib.request`, `http.client
 `socket`, `json`, `threading`, `queue`, `time`). Toda la UI es HTML/JS plano
 servido por el puente de plugins de OrcaSlicer (nada de PyQt/wx/tkinter).
 
-> **Estado: v0.9.0 — fin de impresión y config estable.** API real autenticada contra la AD5X
+> **Estado: v0.10.0 — UI bilingüe ES/EN.** API real autenticada contra la AD5X
 > (`192.168.1.50`, fw `3.1.8-1.1.1`), multi-impresora, UDP discovery,
 > notificaciones, gráficas y dashboard con sensores integrados bajo el hero,
 > control más ancho (70/30) con dial ampliado, IFS a ancho completo, homing real
@@ -112,7 +112,7 @@ Todos los mensajes salen por `stderr` con el prefijo `[FlashForgeMonitor]`.
 
 ---
 
-## Configuración multi-impresora (schema v2)
+## Configuración multi-impresora (schema v3)
 
 ```json
 {
@@ -362,6 +362,23 @@ El hero tiene vistas propias para los estados transitorios del firmware:
   muestra «reintentando… (Xs)» sin repetir toasts. Un `refresh` manual
   interrumpe el backoff.
 
+## Language / Idioma (v0.10.0)
+
+The dashboard and configuration UI are available in **Spanish and English**.
+Selector: **Configurar → Idioma** in the dashboard, or **Plugins → FlashForge
+Monitor → Configuración**.
+
+- `auto` uses OrcaSlicer's UI language through the documented
+  `orca.host.app_language()` accessor. Any `es_*` locale → Spanish; any other
+  locale → English. If the accessor is unavailable, `auto` falls back to
+  **English** (international hub audience).
+- `es` and `en` force the language. The change applies live (the dashboard
+  re-renders without restarting OrcaSlicer).
+- Config schema v3 stores `language`; v1/v2 configs migrate to
+  `language: "auto"` without losing printers or credentials.
+- Backend errors, toasts, banners, notifications and configuration messages
+  are translated too.
+
 ## Fin de impresión y config estable (v0.9.0)
 
 - Tras `completed`/`cancel`, el hero muestra una tarjeta con tilde verde,
@@ -469,7 +486,7 @@ Cuatro secciones:
    control, temperaturas + fallback TCP 8899, archivos, subida multipart…
 3. **Descubrimiento UDP**: servidor UDP local que responde con el paquete de
    276 B (offsets §9.2), más el caso de permiso denegado.
-4. **Capability completa** con un `orca` falso: migración v1→v2, editor
+4. **Capability completa** con un `orca` falso: migración v1→v3, editor
    multi-impresora, cambio de impresora activa, notificaciones (con
    `push_notification` simulado), descubrimiento vía handler, y todos los
    mensajes de la ronda 1.

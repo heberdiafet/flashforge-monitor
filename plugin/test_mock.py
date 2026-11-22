@@ -189,7 +189,8 @@ def build_fake_orca() -> tuple[types.ModuleType, list]:
     module.pages = pages
     module.plugin = lambda cls: cls  # decorador identidad
     module.register_capability = lambda cls: registered.append(cls)
-    module.host = types.SimpleNamespace(ui=FakeHostUi())
+    module.host = types.SimpleNamespace(
+        ui=FakeHostUi(), app_language=lambda: "es_ES")
     return module, registered
 
 
@@ -1265,7 +1266,8 @@ def test_page_with_fake_orca() -> None:
     expect(default_cfg["poll_interval"] == module.DEFAULT_INTERVAL, "intervalo por defecto")
     expect(default_cfg["notify_on_finish"] is True and default_cfg["notify_on_error"] is True,
            "notificaciones activadas por defecto")
-    expect(page.get_config_version() == module.CONFIG_VERSION == "2", "versión de config v2")
+    expect(page.get_config_version() == module.CONFIG_VERSION == "3", "versión de config v3")
+    expect(default_cfg.get("language") == "auto", "language por defecto auto")
 
     # --- Migración v1 → v2 sin perder credenciales ---
     page._stored_config = json.dumps({
@@ -1280,9 +1282,44 @@ def test_page_with_fake_orca() -> None:
            "check code migrado (no se pierde el Printer ID)")
     expect(migrated["poll_interval"] == 3 and migrated["mock"] is False,
            "intervalo y mock migrados")
+    expect(migrated.get("language") == "auto", "v1 migrada añade language auto")
     persisted = json.loads(page._stored_config)
     expect("printers" in persisted, "la migración se persiste en el host")
     expect(persisted["printers"][0]["check_code"] == "a1b2c3d4", "persistida con el código")
+
+    # v2 → v3: config con impresoras sin language.
+    page._stored_config = json.dumps({
+        "printers": [{"name": "V2", "ip": "10.0.0.2"}],
+        "active_printer": 0, "poll_interval": 5, "mock": False,
+    })
+    v3 = json.loads(page.get_config())
+    expect(v3.get("language") == "auto", f"v2→v3 language auto: {v3.get('language')}")
+    expect(json.loads(page._stored_config).get("language") == "auto",
+           "v2→v3 persiste language")
+
+    expect(module.resolve_language({"language": "auto"}) == "es",
+           "auto detecta app_language es_ES")
+    fake_orca.host.app_language = lambda: "en_US"
+    expect(module.resolve_language({"language": "auto"}) == "en",
+           "auto detecta en_US")
+    fake_orca.host.app_language = None
+    expect(module.resolve_language({"language": "auto"}) == "en",
+           "auto sin detección → en")
+    fake_orca.host.app_language = lambda: "es_ES"
+    expect(module.resolve_language({"language": "en"}) == "en", "language en fijo")
+    expect(module.resolve_language({"language": "es"}) == "es", "language es fijo")
+    expect(module.translate_text("Impresión completada.", "en") == "Print completed.",
+           "translate_text UI")
+    expect("Could not connect to" in module.translate_text(
+        "No se pudo conectar con 1.2.3.4:8898 (timeout). Comprueba que está encendida y en LAN-only mode.",
+        "en"), "translate_text error de red")
+
+    page._lang = "en"
+    page._post({"type": "command-ack", "command": "home", "ok": True,
+                "message": "Homing iniciado (la impresora se moverá)."})
+    expect(page.messages("command-ack")[-1]["message"].startswith("Homing started"),
+           f"worker traduce mensajes: {page.messages('command-ack')[-1]['message']}")
+    page._lang = "es"
 
     # Restaura un config limpio para el resto de la prueba.
     page._stored_config = "{}"
@@ -1579,6 +1616,7 @@ def test_page_with_fake_orca() -> None:
     # --- intención local: éxito, error, timeout y M119 ---
     intent_page = page_cls()
     intent_page._ensure_state()
+    intent_page._lang = "es"
 
     for kind, slot, expected in (
         ("leveling", None, "Nivelado completado"),
@@ -1679,6 +1717,7 @@ def test_page_with_fake_orca() -> None:
            f"rescate adopta la 0.8.2 más completa: {rescued.get('printers')}")
     expect(rescued["printers"][0]["check_code"] == "a1b2c3d4",
            "el rescate conserva el check code")
+    expect(rescued.get("language") == "auto", "rescate normaliza language auto")
     persisted = json.loads(page._stored_config)
     expect(persisted["printers"][0]["name"] == "AD5X final",
            "el rescate se persiste en la capability actual")

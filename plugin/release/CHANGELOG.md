@@ -1,6 +1,6 @@
 # Changelog — FlashForge Monitor
 
-Formato: una línea por hito relevante. Versión actual: **0.9.0**.
+Formato: una línea por hito relevante. Versión actual: **0.10.0**.
 
 - **0.1.0** — Base: cliente local HTTP 8898, dashboard demo y modelo de datos de la AD5X.
 - **0.2.0** — Control de trabajos y archivos: pausar/reanudar/detener, listado, miniaturas y subida.
@@ -20,3 +20,5 @@ Formato: una línea por hito relevante. Versión actual: **0.9.0**.
   AD5X sin bind, 320 B).
 
 - **0.9.0** — Tarjeta de finalización con **Confirme**/`stateCtrl_cmd` y **Volver a imprimir**; reimpresión tras `completed`/`cancel`; wheel estable `flashforge_monitor_any.whl` y rescate de config huérfana al arrancar.
+
+- **0.10.0** — UI bilingüe ES/EN completa, selector Auto/Español/English, detección con `orca.host.app_language()` y config v3 (`language`). *Requested by @Meechi91 on the Plugin Hub.*

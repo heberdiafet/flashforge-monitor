@@ -1,8 +1,8 @@
 # Publicación en cloud.orcaslicer.com — pasos para Heberdiafet
 
 Artefacto estable para subir: `release/flashforge_monitor_any.whl`
-Copia canónica: `release/flashforgemonitor-0.9.0-py3-none-any.whl`
-SHA-256 (idéntico en ambos): `f02e6770f57c5cb9ad017a8ca77a2a382d7bebe33dcdcde65164aab6a955459c`
+Copia canónica: `release/flashforgemonitor-0.10.0-py3-none-any.whl`
+SHA-256 (idéntico en ambos): `c57df8016c54e2a7fb1776331b5107209c2760882b1b946b8432a160168c47ab`
 
 ## Antes de subir
 
@@ -10,7 +10,7 @@ SHA-256 (idéntico en ambos): `f02e6770f57c5cb9ad017a8ca77a2a382d7bebe33dcdcde65
    ```bash
    cd plugin
    python3 validate_wheel.py release/flashforge_monitor_any.whl
-   python3 validate_wheel.py release/flashforgemonitor-0.9.0-py3-none-any.whl
+   python3 validate_wheel.py release/flashforgemonitor-0.10.0-py3-none-any.whl
    sha256sum release/flashforge_monitor_any.whl
    ```
    Ambos deben dar **24/24 OK** y el hash de arriba.
@@ -41,14 +41,14 @@ versión queda solo para uso local/pip.
    - **Supported OS**: Linux (probado); Windows/macOS (sin probar).
    - **Compatible OrcaSlicer**: `>= 2.5.0`.
 5. Sube **`flashforge_monitor_any.whl`** como artefacto/versión del plugin.
-6. Versión: escribe **`0.9.0`** exactamente, sin `v`, sin sufijos (`-beta`, `+build`, etc.). Formato estricto `X.Y.Z`.
+6. Versión: escribe **`0.10.0`** exactamente, sin `v`, sin sufijos (`-beta`, `+build`, etc.). Formato estricto `X.Y.Z`.
 7. Revisa la vista previa: nombre, descripción, tags, SO y compatibilidad.
 8. Activa **Public Plugin** (o el interruptor equivalente de visibilidad pública).
-9. Publica/guarda y comprueba que la página pública muestra la versión **0.9.0** y permite descargar el `.whl`.
+9. Publica/guarda y comprueba que la página pública muestra la versión **0.10.0** y permite descargar el `.whl`.
 
 ## Después de publicar
 
 - Descarga el `.whl` desde la página pública y compara el SHA-256 con el de arriba.
 - Instálalo en un OrcaSlicer limpio (o en el Flatpak del usuario) con **File → Plugins → Install local plugin** para el dogfood final. Usa siempre el nombre estable.
-- Si el hub rechaza la versión, revisa que sea exactamente `0.9.0` y que el `Name` del wheel (`FlashForgeMonitor`) coincida con el del listing.
+- Si el hub rechaza la versión, revisa que sea exactamente `0.10.0` y que el `Name` del wheel (`FlashForgeMonitor`) coincida con el del listing.
 - Si el hub rechaza el wheel, ejecuta `validate_wheel.py` y revisa: un solo `*.dist-info`, `METADATA`/`WHEEL`/`RECORD`, tag `py3-none-any` y `top_level.txt` con `flashforge_monitor`.
